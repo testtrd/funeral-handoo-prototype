@@ -1125,9 +1125,35 @@ textarea {
 }
 
 .paper-report {
+  /* 帳票全体の調整値。まずはここを変更するとA4上の密度をまとめて調整できます。 */
+  --paper-page-width: 210mm;
+  --paper-print-width: 204mm;
+  --paper-page-padding: 12px;
+  --paper-outer-border: 2px solid #222;
+  --paper-title-size: 24px;
+  --paper-title-margin: 6px;
+  --paper-table-font-size: 12px;
+  --paper-value-font-size: 12.8px;
+  --paper-line-height: 1.16;
+  --paper-cell-padding-y: 2px;
+  --paper-cell-padding-x: 5px;
+  --paper-cell-border: 1px solid #333;
+  --paper-label-bg: #f2f4f2;
+  --paper-subtable-font-size: 11.8px;
+  --paper-subtable-line-height: 1.12;
+  --paper-subtable-padding-y: 2px;
+  --paper-subtable-padding-x: 4px;
+  --paper-emphasis-size: 14px;
+  --paper-address-size: 13px;
+  --paper-phone-size: 12.8px;
+  --paper-choice-gap: 9px;
+  --paper-debug-bg: rgba(255, 214, 102, 0.16);
+  --paper-debug-outline: 1px dashed rgba(31, 107, 91, 0.45);
   color: #222;
-  width: min(100%, 210mm);
+  width: min(100%, var(--paper-page-width));
   margin: 0 auto;
+  padding: var(--paper-page-padding);
+  border: var(--paper-outer-border);
   box-sizing: border-box;
 }
 
@@ -1452,23 +1478,23 @@ textarea {
 
 .paper-title {
   text-align: center;
-  font-size: 24px;
+  font-size: var(--paper-title-size);
   font-weight: 700;
-  margin-bottom: 6px;
+  margin-bottom: var(--paper-title-margin);
 }
 
 .paper-table {
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
-  font-size: 12px;
-  line-height: 1.16;
+  font-size: var(--paper-table-font-size);
+  line-height: var(--paper-line-height);
 }
 
 .paper-table th,
 .paper-table td {
-  border: 1px solid #333;
-  padding: 2px 5px;
+  border: var(--paper-cell-border);
+  padding: var(--paper-cell-padding-y) var(--paper-cell-padding-x);
   vertical-align: middle;
   min-height: 0;
   overflow-wrap: anywhere;
@@ -1476,13 +1502,13 @@ textarea {
 }
 
 .paper-table th {
-  background: #f2f4f2;
+  background: var(--paper-label-bg);
   text-align: center;
   font-weight: 700;
 }
 
 .paper-table td {
-  font-size: 12.8px;
+  font-size: var(--paper-value-font-size);
 }
 
 .paper-table .vertical {
@@ -1529,12 +1555,12 @@ textarea {
 }
 
 .paper-emphasis {
-  font-size: 14px;
+  font-size: var(--paper-emphasis-size);
   font-weight: 700;
 }
 
 .paper-emphasis.address {
-  font-size: 13px;
+  font-size: var(--paper-address-size);
 }
 
 .chief-name-cell .paper-name {
@@ -1546,7 +1572,7 @@ textarea {
 }
 
 .paper-phone {
-  font-size: 12.8px;
+  font-size: var(--paper-phone-size);
   font-weight: 700;
   line-height: 1.2;
   white-space: nowrap;
@@ -1608,7 +1634,7 @@ textarea {
 .paper-choice-marks {
   display: inline-flex;
   align-items: center;
-  gap: 9px;
+  gap: var(--paper-choice-gap);
   white-space: nowrap;
   font-weight: 700;
 }
@@ -1653,14 +1679,14 @@ textarea {
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
-  font-size: 11.8px;
-  line-height: 1.12;
+  font-size: var(--paper-subtable-font-size);
+  line-height: var(--paper-subtable-line-height);
 }
 
 .paper-subtable th,
 .paper-subtable td {
   border: 1px solid #777;
-  padding: 2px 4px;
+  padding: var(--paper-subtable-padding-y) var(--paper-subtable-padding-x);
   vertical-align: middle;
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -1721,6 +1747,78 @@ textarea {
 
 .paper-work-times span {
   display: block;
+}
+
+.paper-report-debug .paper-table th,
+.paper-report-debug .paper-table td,
+.paper-report-debug .paper-subtable th,
+.paper-report-debug .paper-subtable td {
+  background-image: linear-gradient(var(--paper-debug-bg), var(--paper-debug-bg));
+  outline: var(--paper-debug-outline);
+  outline-offset: -1px;
+}
+
+.paper-report-debug .paper-title::after {
+  content: " debugMode";
+  margin-left: 8px;
+  color: #1f6b5b;
+  font-size: 11px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.report-preview-page {
+  min-height: 100vh;
+  padding: 18px;
+  background: #dfe4e2;
+}
+
+.report-preview-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  max-width: 1120px;
+  margin: 0 auto 16px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.report-preview-toolbar h1 {
+  margin: 0;
+}
+
+.report-preview-canvas {
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 14px;
+  overflow: auto;
+  background: #eef1ef;
+  border: 1px solid #c8d2ce;
+}
+
+.report-preview-canvas .paper-report {
+  box-shadow: 0 16px 40px rgba(20, 42, 47, 0.18);
+}
+
+.debug-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  font-weight: 700;
+}
+
+.debug-toggle input {
+  width: 18px;
+  min-height: 18px;
 }
 
 .toolbar {
@@ -1931,6 +2029,16 @@ textarea {
     padding: 0;
   }
 
+  .report-preview-page,
+  .report-preview-canvas {
+    width: 100%;
+    padding: 0;
+    margin: 0;
+    overflow: visible;
+    background: #fff;
+    border: 0;
+  }
+
   .section {
     border: 0;
     padding: 0;
@@ -1939,7 +2047,7 @@ textarea {
 
   .paper-report {
     border: 0;
-    width: 204mm;
+    width: var(--paper-print-width);
     min-height: auto;
     padding: 0;
     margin: 0 auto;
@@ -1984,7 +2092,7 @@ textarea {
   }
 
   .paper-title {
-    font-size: 20px;
+    font-size: calc(var(--paper-title-size) - 4px);
     margin-bottom: 0.8mm;
   }
 
@@ -1994,13 +2102,13 @@ textarea {
   }
 
   .paper-table {
-    font-size: 10.7px;
+    font-size: calc(var(--paper-table-font-size) - 1.3px);
     line-height: 1.12;
     page-break-inside: avoid;
   }
 
   .paper-table td {
-    font-size: 11.2px;
+    font-size: calc(var(--paper-value-font-size) - 1.6px);
   }
 
   .paper-table tr {
@@ -2009,7 +2117,7 @@ textarea {
   }
 
   .paper-subtable {
-    font-size: 10.1px;
+    font-size: calc(var(--paper-subtable-font-size) - 1.7px);
     line-height: 1.1;
   }
 
@@ -2019,11 +2127,11 @@ textarea {
   }
 
   .paper-emphasis {
-    font-size: 13.6px;
+    font-size: calc(var(--paper-emphasis-size) - 0.4px);
   }
 
   .paper-emphasis.address {
-    font-size: 12.7px;
+    font-size: calc(var(--paper-address-size) - 0.3px);
   }
 
   .chief-name-cell .paper-name {
@@ -2035,7 +2143,7 @@ textarea {
   }
 
   .paper-phone {
-    font-size: 11.8px;
+    font-size: calc(var(--paper-phone-size) - 1px);
     line-height: 1.16;
   }
 

@@ -2610,11 +2610,11 @@ export function InternalStorageReport({ data }: { data: HandoffData }) {
   );
 }
 
-export function HandoffReportForm({ formData }: { formData: HandoffData }) {
-  return <PaperReport data={formData} />;
+export function HandoffReportForm({ formData, debugMode = false }: { formData: HandoffData; debugMode?: boolean }) {
+  return <PaperReport data={formData} debugMode={debugMode} />;
 }
 
-export function PaperReport({ data, compact = false }: { data: HandoffData; compact?: boolean }) {
+export function PaperReport({ data, compact = false, debugMode = false }: { data: HandoffData; compact?: boolean; debugMode?: boolean }) {
   const branch = getBranches().find((item) => item.id === data.branchId);
   const vendor = getVendorMap()[data.vendorId];
   const rule = getVendorRule(data.vendorId);
@@ -2640,7 +2640,7 @@ export function PaperReport({ data, compact = false }: { data: HandoffData; comp
   };
 
   return (
-    <div className="paper-report">
+    <div className={debugMode ? "paper-report paper-report-debug" : "paper-report"}>
       <div className="paper-title">{`業務引継書（${vendor?.name || "業者未選択"}）`}</div>
       <table className="paper-table">
         <tbody>
