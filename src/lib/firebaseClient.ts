@@ -24,13 +24,19 @@ function normalizeFirebaseEnvValue(value: string | undefined) {
     .trim();
 }
 
+function firebaseEnv(nextPublicName: string, viteName: string) {
+  return normalizeFirebaseEnvValue(process.env[nextPublicName] || process.env[viteName]);
+}
+
 function firebaseConfig(): FirebaseOptions | null {
   const config: FirebaseOptions = {
-    apiKey: normalizeFirebaseEnvValue(process.env.NEXT_PUBLIC_FIREBASE_API_KEY),
-    authDomain: normalizeFirebaseEnvValue(process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN),
-    projectId: normalizeFirebaseEnvValue(process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID),
-    messagingSenderId: normalizeFirebaseEnvValue(process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID),
-    appId: normalizeFirebaseEnvValue(process.env.NEXT_PUBLIC_FIREBASE_APP_ID)
+    apiKey: firebaseEnv("NEXT_PUBLIC_FIREBASE_API_KEY", "VITE_FIREBASE_API_KEY"),
+    authDomain: firebaseEnv("NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN", "VITE_FIREBASE_AUTH_DOMAIN"),
+    projectId: firebaseEnv("NEXT_PUBLIC_FIREBASE_PROJECT_ID", "VITE_FIREBASE_PROJECT_ID"),
+    storageBucket: firebaseEnv("NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET", "VITE_FIREBASE_STORAGE_BUCKET"),
+    messagingSenderId: firebaseEnv("NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID", "VITE_FIREBASE_MESSAGING_SENDER_ID"),
+    appId: firebaseEnv("NEXT_PUBLIC_FIREBASE_APP_ID", "VITE_FIREBASE_APP_ID"),
+    measurementId: firebaseEnv("NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID", "VITE_FIREBASE_MEASUREMENT_ID")
   };
 
   return config.apiKey && config.authDomain && config.projectId && config.appId ? config : null;
