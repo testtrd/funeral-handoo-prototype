@@ -1604,7 +1604,8 @@ textarea {
   font-weight: 700;
 }
 
-.status-choice-marks {
+.status-choice-marks,
+.paper-choice-marks {
   display: inline-flex;
   align-items: center;
   gap: 9px;
@@ -1612,7 +1613,13 @@ textarea {
   font-weight: 700;
 }
 
-.status-choice-marks span {
+.paper-choice-marks {
+  gap: 7px;
+  margin-left: 2px;
+}
+
+.status-choice-marks span,
+.paper-choice-marks span {
   position: relative;
   display: inline-grid;
   place-items: center;
@@ -1621,6 +1628,13 @@ textarea {
   line-height: 1;
 }
 
+.paper-choice-marks span {
+  width: auto;
+  min-width: 1.45em;
+  padding: 0 0.18em;
+}
+
+.circle-selected::after,
 .status-choice-marks span.selected::after {
   content: "";
   position: absolute;
@@ -1628,6 +1642,11 @@ textarea {
   border: 1.6px solid currentColor;
   border-radius: 50%;
   pointer-events: none;
+}
+
+.paper-field-label {
+  margin-right: 4px;
+  font-weight: 700;
 }
 
 .paper-subtable {
@@ -2039,15 +2058,24 @@ textarea {
     gap: 0.25mm 2mm;
   }
 
-  .status-choice-marks {
+  .status-choice-marks,
+  .paper-choice-marks {
     gap: 1.2mm;
   }
 
-  .status-choice-marks span {
+  .status-choice-marks span,
+  .paper-choice-marks span {
     width: 1.4em;
     height: 1.4em;
   }
 
+  .paper-choice-marks span {
+    width: auto;
+    min-width: 1.4em;
+    padding: 0 0.12em;
+  }
+
+  .circle-selected::after,
   .status-choice-marks span.selected::after {
     border-width: 1.2px;
   }

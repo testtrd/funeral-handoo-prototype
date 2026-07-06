@@ -739,7 +739,17 @@ function StatusChoiceMarks({ value }: { value: string }) {
   return (
     <span className="status-choice-marks" aria-label={`決・仮・未 ${value || "未選択"}`}>
       {["決", "仮", "未"].map((option) => (
-        <span key={option} className={value === option ? "selected" : ""}>{option}</span>
+        <span key={option} className={value === option ? "circle-selected" : ""}>{option}</span>
+      ))}
+    </span>
+  );
+}
+
+function CircleChoiceMarks({ value, options, label }: { value: string; options: string[]; label: string }) {
+  return (
+    <span className="paper-choice-marks" aria-label={`${label} ${value || "未選択"}`}>
+      {options.map((option) => (
+        <span key={option} className={value === option ? "circle-selected" : ""}>{option}</span>
       ))}
     </span>
   );
@@ -2600,6 +2610,10 @@ export function InternalStorageReport({ data }: { data: HandoffData }) {
   );
 }
 
+export function HandoffReportForm({ formData }: { formData: HandoffData }) {
+  return <PaperReport data={formData} />;
+}
+
 export function PaperReport({ data, compact = false }: { data: HandoffData; compact?: boolean }) {
   const branch = getBranches().find((item) => item.id === data.branchId);
   const vendor = getVendorMap()[data.vendorId];
@@ -2612,6 +2626,18 @@ export function PaperReport({ data, compact = false }: { data: HandoffData; comp
   const suppliesOther = suppliesOtherText(data);
   const paperVendorItemRows = vendorItemRows(data);
   const remarks = handoffRemarkLines(data);
+  const vendorItemValue = (label: string, value: string) => {
+    if (label === "葬儀規模") {
+      return <CircleChoiceMarks label={label} value={value} options={rule.funeralScaleOptions.length ? rule.funeralScaleOptions : ["一般葬", "家族葬", "その他"]} />;
+    }
+    if (label === "会員・非会員") {
+      return <CircleChoiceMarks label={label} value={value.replace(/^会員（.+）$/, "会員").replace(/^非会員（.+）$/, "非会員")} options={["会員", "非会員", "不明"]} />;
+    }
+    if (label === "組合員区分") {
+      return <CircleChoiceMarks label={label} value={value} options={["正組合員", "准組合員", "非組合員"]} />;
+    }
+    return value || "-";
+  };
 
   return (
     <div className="paper-report">
@@ -2648,7 +2674,10 @@ export function PaperReport({ data, compact = false }: { data: HandoffData; comp
             <th rowSpan={3} className="vertical">故人</th>
             <th>氏名</th>
             <td colSpan={2} className="paper-emphasis deceased-name-cell"><span className="dotted">{data.deceased.kana}</span><span className="name-line"><strong className="paper-name">{data.deceased.name}</strong><span className="honorific">様</span></span></td>
-            <td className="paper-compact-cell">性別：{data.deceased.gender}</td>
+            <td className="paper-compact-cell">
+              <span className="paper-field-label">性別</span>
+              <CircleChoiceMarks label="性別" value={data.deceased.gender} options={["男", "女"]} />
+            </td>
             <td colSpan={2} className="paper-birthdate">
               <div><span>生年月日 {formatEraDate(data.deceased.birthDate)}</span><span>{ageText}</span></div>
               <div className="paper-birthdate-death"><span>死亡日時 {data.deceased.deathDate.displayText}</span></div>
@@ -2663,10 +2692,10 @@ export function PaperReport({ data, compact = false }: { data: HandoffData; comp
           <tr>
             <td colSpan={6}>
               <div className="paper-inline-list four">
-                <span>死亡診断書（{data.deceased.deathCertificate || "　"}）</span>
-                <span>検案書（{data.deceased.postmortemCertificate || "　"}）</span>
-                <span>処置（{data.deceased.treatment || "　"}）</span>
-                <span>ペースメーカー（{data.deceased.pacemaker || "　"}）</span>
+                <span>死亡診断書 <CircleChoiceMarks label="死亡診断書" value={data.deceased.deathCertificate} options={["有", "無"]} /></span>
+                <span>検案書 <CircleChoiceMarks label="検案書" value={data.deceased.postmortemCertificate} options={["有", "無"]} /></span>
+                <span>処置 <CircleChoiceMarks label="処置" value={data.deceased.treatment} options={["有", "無"]} /></span>
+                <span>ペースメーカー <CircleChoiceMarks label="ペースメーカー" value={data.deceased.pacemaker} options={["有", "無"]} /></span>
               </div>
             </td>
           </tr>
@@ -2714,7 +2743,7 @@ export function PaperReport({ data, compact = false }: { data: HandoffData; comp
             <td><StatusChoiceMarks value={data.schedule.crematoriumStatus} /></td>
             <td colSpan={2}>出棺日時 {formatMonthDayTime(data.schedule.departureDateTime)}</td>
             <td colSpan={2}>火葬日時 {formatMonthDayTime(data.schedule.cremationDateTime)}</td>
-            <td>予約 {data.schedule.cremationReservationStatus}</td>
+            <td>予約 <CircleChoiceMarks label="火葬予約状況" value={data.schedule.cremationReservationStatus} options={["済", "未"]} /></td>
           </tr>
           <tr>
             <th>火葬補足</th>
@@ -2789,7 +2818,7 @@ export function PaperReport({ data, compact = false }: { data: HandoffData; comp
               <td colSpan={6}>
                 <div className="paper-pair-grid">
                   {paperVendorItemRows.map(([label, value]) => (
-                    <span key={label}><strong>{label}</strong> {value || "-"}</span>
+                    <span key={label}><strong>{label}</strong> {vendorItemValue(label, value)}</span>
                   ))}
                 </div>
               </td>
