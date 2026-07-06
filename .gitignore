@@ -1,0 +1,7 @@
+.next/
+node_modules/
+*.log
+tsconfig.tsbuildinfo
+.env.local
+.env*.local
+work/
