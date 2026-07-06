@@ -66,7 +66,26 @@ export async function saveHandoffRecordToCloud(record: HandoffRecord) {
     throw new Error("Firebase設定が未登録です。Vercelの環境変数を確認してください。");
   }
 
-  const user = await ensureFirebaseAuthSession();
+  let user;
+  try {
+    user = await ensureFirebaseAuthSession();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Firebase Authenticationの匿名ログインに失敗しました。";
+    console.error("[Firestore sync] Anonymous auth failed before setDoc.", {
+      collection: handoffCollectionName,
+      recordId: record.id,
+      message,
+      debug: getFirebaseDebugInfo(),
+      error
+    });
+    logClientSyncError("Firebase anonymous auth failed.", {
+      collection: handoffCollectionName,
+      recordId: record.id,
+      message,
+      ...getFirebaseDebugInfo()
+    });
+    throw new Error(message);
+  }
   if (!user) {
     const message =
       "Firebase Authenticationの匿名ログインに失敗しました。Firebase ConsoleでAuthenticationの匿名ログインが有効か確認してください。";
@@ -128,7 +147,24 @@ export async function getCloudHandoffRecords() {
   const db = getFirebaseDb();
   if (!canUseFirebase() || !db) return [];
 
-  const user = await ensureFirebaseAuthSession();
+  let user;
+  try {
+    user = await ensureFirebaseAuthSession();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Firebase Authenticationの匿名ログインに失敗しました。";
+    console.error("[Firestore sync] getDocs skipped because anonymous auth failed.", {
+      collection: handoffCollectionName,
+      message,
+      debug: getFirebaseDebugInfo(),
+      error
+    });
+    logClientSyncError("Firebase anonymous auth failed before getDocs.", {
+      collection: handoffCollectionName,
+      message,
+      ...getFirebaseDebugInfo()
+    });
+    return [];
+  }
   if (!user) {
     console.error("[Firestore sync] getDocs skipped because auth session is missing.", {
       collection: handoffCollectionName,

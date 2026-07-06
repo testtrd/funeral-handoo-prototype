@@ -56,6 +56,7 @@ export function getFirebaseDebugInfo() {
     missing,
     projectId: config.projectId || "",
     authDomain: config.authDomain || "",
+    currentHost: typeof window !== "undefined" ? window.location.host : "",
     appIdPresent: Boolean(config.appId),
     apiKeyPresent: Boolean(config.apiKey),
     messagingSenderIdPresent: Boolean(config.messagingSenderId),
@@ -107,6 +108,9 @@ export async function ensureFirebaseAuthSession(): Promise<User | null> {
     return credential.user;
   } catch (error) {
     const firebaseError = error as { code?: string; message?: string };
+    const message = firebaseError.code && firebaseError.message
+      ? `${firebaseError.code}: ${firebaseError.message}`
+      : firebaseError.message || "Firebase Authenticationの匿名ログインに失敗しました。";
     console.warn(
       "[Firebase Auth] Anonymous sign-in failed. If Firestore rules require authentication, cloud sync will fail.",
       {
@@ -116,7 +120,7 @@ export async function ensureFirebaseAuthSession(): Promise<User | null> {
         error
       }
     );
-    return null;
+    throw new Error(message);
   }
 }
 
