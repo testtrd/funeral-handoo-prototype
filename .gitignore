@@ -5,3 +5,4 @@ tsconfig.tsbuildinfo
 .env.local
 .env*.local
 work/
+tmp_report_*

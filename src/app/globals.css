@@ -1800,8 +1800,80 @@ textarea {
   border: 1px solid #c8d2ce;
 }
 
+.report-preview-canvas.with-word-guide {
+  display: grid;
+  grid-template-columns: minmax(210mm, auto) minmax(92mm, 108mm);
+  align-items: start;
+  gap: 14px;
+}
+
+.report-preview-sheet {
+  width: fit-content;
+}
+
 .report-preview-canvas .paper-report {
   box-shadow: 0 16px 40px rgba(20, 42, 47, 0.18);
+}
+
+.word-form-reference {
+  position: sticky;
+  top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.word-form-reference-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid #c8d2ce;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.word-form-reference-title span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.word-form-reference-page {
+  position: relative;
+  width: 100%;
+  height: 297mm;
+  min-width: 92mm;
+  border: 2px solid #222;
+  background:
+    linear-gradient(to bottom, rgba(31, 107, 91, 0.08) 0 1px, transparent 1px 10mm),
+    #fff;
+  box-shadow: 0 16px 40px rgba(20, 42, 47, 0.16);
+  overflow: hidden;
+}
+
+.word-form-band {
+  position: absolute;
+  top: var(--word-band-top);
+  left: clamp(5mm, calc(var(--word-band-left) - 14mm), 34mm);
+  right: 4mm;
+  min-height: var(--word-band-height);
+  display: grid;
+  align-content: center;
+  gap: 1px;
+  padding: 1mm 1.3mm;
+  border: 1px dashed rgba(31, 107, 91, 0.55);
+  background: rgba(255, 214, 102, 0.2);
+  color: #164f45;
+  font-size: 10px;
+  line-height: 1.1;
+  font-weight: 800;
+}
+
+.word-form-band small {
+  color: #42615a;
+  font-size: 8px;
+  font-weight: 700;
 }
 
 .debug-toggle {
@@ -1922,6 +1994,14 @@ textarea {
 }
 
 @media (max-width: 760px) {
+  .report-preview-canvas.with-word-guide {
+    grid-template-columns: 1fr;
+  }
+
+  .word-form-reference {
+    position: static;
+  }
+
   .app-shell {
     padding: 14px 14px 168px;
   }
@@ -1991,6 +2071,7 @@ textarea {
   .stepper,
   .actions,
   .toolbar,
+  .word-form-reference,
   .pdf-download-source,
   .no-print {
     display: none !important;

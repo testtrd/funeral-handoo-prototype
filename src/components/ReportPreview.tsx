@@ -9,6 +9,7 @@ import {
   membershipStatusQuestion,
   unionMemberTypeQuestion
 } from "@/lib/master";
+import { wordFormBandStyle, wordFormReferenceBands } from "@/lib/wordFormReference";
 import type { HandoffData } from "@/types/form";
 
 function sampleSignatureDataUrl() {
@@ -152,6 +153,7 @@ function createPreviewData(): HandoffData {
 
 export function ReportPreview() {
   const [debugMode, setDebugMode] = useState(true);
+  const [showWordGuide, setShowWordGuide] = useState(true);
   const previewData = useMemo(() => createPreviewData(), []);
 
   return (
@@ -167,12 +169,34 @@ export function ReportPreview() {
             <input type="checkbox" checked={debugMode} onChange={(event) => setDebugMode(event.target.checked)} />
             <span>ガイド表示</span>
           </label>
+          <label className="debug-toggle">
+            <input type="checkbox" checked={showWordGuide} onChange={(event) => setShowWordGuide(event.target.checked)} />
+            <span>Word帳票ガイド</span>
+          </label>
           <button type="button" onClick={() => window.print()}>印刷プレビュー</button>
           <a className="button-link" href="/dashboard">ダッシュボード</a>
         </div>
       </header>
-      <section className="report-preview-canvas">
-        <HandoffReportForm formData={previewData} debugMode={debugMode} />
+      <section className={showWordGuide ? "report-preview-canvas with-word-guide" : "report-preview-canvas"}>
+        <div className="report-preview-sheet">
+          <HandoffReportForm formData={previewData} debugMode={debugMode} />
+        </div>
+        {showWordGuide ? (
+          <aside className="word-form-reference" aria-label="Word帳票フォーム2の配置ガイド">
+            <div className="word-form-reference-title">
+              <strong>Word帳票フォーム2</strong>
+              <span>抽出した主要行の目安</span>
+            </div>
+            <div className="word-form-reference-page">
+              {wordFormReferenceBands.map((band) => (
+                <div className="word-form-band" style={wordFormBandStyle(band)} key={`${band.topPt}-${band.label}`}>
+                  <span>{band.label}</span>
+                  {band.note ? <small>{band.note}</small> : null}
+                </div>
+              ))}
+            </div>
+          </aside>
+        ) : null}
       </section>
     </main>
   );
