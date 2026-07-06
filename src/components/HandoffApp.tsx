@@ -1993,7 +1993,7 @@ function persistFamilyCopyData(nextData: HandoffData, idOverride?: string | null
                 {data.supplies.coffinUsage === "手入力" ? (
                   <TextInput data={data} path="supplies.coffinDetail" label="棺の内容" placeholder="棺の種類・サイズなどを入力してください。" />
                 ) : null}
-                <DatalistInput data={data} path="supplies.mokugyoSetNo" label="木魚リンセット貸出No" options={["使用なし", "No.1", "No.2", "No.3", "その他（手入力）"]} placeholder="選択してください" hint="選択してください。該当がない場合はその他（手入力）を選んで入力してください。" />
+                <DatalistInput data={data} path="supplies.mokugyoSetNo" label="木魚リンセット貸出No" options={["使用なし", "No.1", "No.2", "No.3", "その他（手入力）"]} placeholder="選択してください" />
                 <SelectInput data={data} path="supplies.faceCloth" label="面布" options={["使用あり", "使用なし"]} />
               </div>
             </div>
