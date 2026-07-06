@@ -171,7 +171,7 @@ export function ReportPreview() {
           </label>
           <label className="debug-toggle">
             <input type="checkbox" checked={showWordGuide} onChange={(event) => setShowWordGuide(event.target.checked)} />
-            <span>Word帳票ガイド</span>
+            <span>帳票見本</span>
           </label>
           <button type="button" onClick={() => window.print()}>印刷プレビュー</button>
           <a className="button-link" href="/dashboard">ダッシュボード</a>
@@ -182,12 +182,18 @@ export function ReportPreview() {
           <HandoffReportForm formData={previewData} debugMode={debugMode} />
         </div>
         {showWordGuide ? (
-          <aside className="word-form-reference" aria-label="Word帳票フォーム2の配置ガイド">
+          <aside className="word-form-reference" aria-label="業務引継書の帳票見本">
             <div className="word-form-reference-title">
-              <strong>Word帳票フォーム2</strong>
-              <span>抽出した主要行の目安</span>
+              <strong>202312 最終案</strong>
+              <span>実物画像 + 行目安</span>
             </div>
             <div className="word-form-reference-page">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                alt="202312 業務引継書 最終案"
+                className="word-form-reference-image"
+                src="/report-template-reference.jpg"
+              />
               {wordFormReferenceBands.map((band) => (
                 <div className="word-form-band" style={wordFormBandStyle(band)} key={`${band.topPt}-${band.label}`}>
                   <span>{band.label}</span>

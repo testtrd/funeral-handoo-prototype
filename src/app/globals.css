@@ -1845,15 +1845,24 @@ textarea {
   height: 297mm;
   min-width: 92mm;
   border: 2px solid #222;
-  background:
-    linear-gradient(to bottom, rgba(31, 107, 91, 0.08) 0 1px, transparent 1px 10mm),
-    #fff;
+  background: #fff;
   box-shadow: 0 16px 40px rgba(20, 42, 47, 0.16);
   overflow: hidden;
 }
 
+.word-form-reference-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  background: #fff;
+}
+
 .word-form-band {
   position: absolute;
+  z-index: 1;
   top: var(--word-band-top);
   left: clamp(5mm, calc(var(--word-band-left) - 14mm), 34mm);
   right: 4mm;
@@ -1862,8 +1871,8 @@ textarea {
   align-content: center;
   gap: 1px;
   padding: 1mm 1.3mm;
-  border: 1px dashed rgba(31, 107, 91, 0.55);
-  background: rgba(255, 214, 102, 0.2);
+  border: 1px dashed rgba(31, 107, 91, 0.36);
+  background: rgba(255, 214, 102, 0.14);
   color: #164f45;
   font-size: 10px;
   line-height: 1.1;
