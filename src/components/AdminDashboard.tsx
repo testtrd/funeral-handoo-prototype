@@ -389,11 +389,11 @@ export default function AdminDashboard() {
     });
   }
 
-  function savePostWork(record: HandoffRecord) {
-    if (!postWorkDraft) return;
+  function buildPostWorkData(record: HandoffRecord) {
+    if (!postWorkDraft) return null;
     const current = getCurrentUser();
     const now = new Date().toISOString();
-    const nextData: HandoffData = {
+    return {
       ...record.data,
       handoffNotes: {
         ...handoffNotesDraft,
@@ -414,10 +414,24 @@ export default function AdminDashboard() {
         }
       }
     };
+  }
+
+  function savePostWork(record: HandoffRecord) {
+    const nextData = buildPostWorkData(record);
+    if (!nextData) return;
     const updated = saveHandoffRecord(nextData, { id: record.id, status: advanceStatus(record.status, "業務終了後入力済み"), pdfGenerated: record.pdf.generated });
     loadRecords();
     setSelectedId(updated.id);
     alert("業務終了後入力を保存しました。");
+  }
+
+  function completePostWork(record: HandoffRecord) {
+    const nextData = buildPostWorkData(record);
+    if (!nextData) return;
+    const updated = saveHandoffRecord(nextData, { id: record.id, status: "完了", pdfGenerated: record.pdf.generated });
+    loadRecords();
+    setSelectedId(updated.id);
+    alert("入力完了にしました。");
   }
 
   function markInternalCopyStored(record: HandoffRecord) {
@@ -614,6 +628,7 @@ export default function AdminDashboard() {
                 <p className="small">保存状況: {selected.data.postWork.savedAt ? `${formatDateTime(selected.data.postWork.savedAt)} / ${selected.data.postWork.savedBy.name || "-"}` : "未保存"}</p>
                 <div className="admin-button-row">
                   <button onClick={() => savePostWork(selected)}>業務終了後入力・引き継ぎ事項を保存</button>
+                  <button className="primary admin-complete-button" onClick={() => completePostWork(selected)}>入力完了</button>
                 </div>
               </div>
             ) : <p className="small">業務終了後入力を読み込めませんでした。</p>}

@@ -620,6 +620,10 @@ textarea {
   gap: 8px;
 }
 
+.admin-complete-button {
+  margin-left: auto;
+}
+
 .admin-suggestion-panel {
   display: grid;
   gap: 10px;
