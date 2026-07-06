@@ -161,7 +161,12 @@ export default function DriverDashboard() {
                   <td><span className="status-chip">{statusDisplay(record.status)}</span></td>
                   <td>{nextActionForRecord(record)}</td>
                   <td><span className={progressPercent(record) < 100 ? "progress-pill incomplete" : "progress-pill"}><span className="progress-fill" style={{ width: `${progressPercent(record)}%` }} /><strong>{progressPercent(record)}%</strong></span></td>
-                  <td><span className={`sync-chip ${record.syncStatus}`}>{syncStatusLabel(record.syncStatus)}</span></td>
+                  <td>
+                    <span className={`sync-chip ${record.syncStatus}`} title={record.syncError || syncStatusLabel(record.syncStatus)}>
+                      {syncStatusLabel(record.syncStatus)}
+                    </span>
+                    {record.syncError ? <span className="sync-error-detail">{record.syncError}</span> : null}
+                  </td>
                   <td>{formatDateTime(record.createdAt)}</td>
                   <td>{record.branchName}</td>
                   <td>{record.vendorName}</td>

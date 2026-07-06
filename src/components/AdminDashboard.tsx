@@ -719,7 +719,12 @@ export default function AdminDashboard() {
                 <td><span className="status-chip">{statusDisplay(record.status)}</span></td>
                 <td>{nextActionForRecord(record)}</td>
                 <td><span className={progressPercent(record) < 100 ? "progress-pill incomplete" : "progress-pill"}><span className="progress-fill" style={{ width: `${progressPercent(record)}%` }} /><strong>{progressPercent(record)}%</strong></span></td>
-                <td><span className={`sync-chip ${record.syncStatus}`}>{syncStatusLabel(record.syncStatus)}</span></td>
+                <td>
+                  <span className={`sync-chip ${record.syncStatus}`} title={record.syncError || syncStatusLabel(record.syncStatus)}>
+                    {syncStatusLabel(record.syncStatus)}
+                  </span>
+                  {record.syncError ? <span className="sync-error-detail">{record.syncError}</span> : null}
+                </td>
                 <td>{formatDateTime(record.createdAt)}</td><td>{record.branchName}</td><td>{record.vendorName}</td><td>{record.deceasedName || "-"}</td><td>{record.mournerName || "-"}</td><td>{record.assignedDriver?.name || record.createdBy?.name || "-"}</td>
                 <td>{record.cremationReservationStatus || "-"}</td><td>{record.pdf.generated ? "作成済み" : "未作成"}</td><td>{formatDateTime(record.updatedAt)}</td><td>{updatedByName(record)}</td>
                 <td>

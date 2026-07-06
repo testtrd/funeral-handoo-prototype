@@ -12,9 +12,16 @@ import {
 
 function statusText(status: HandoffSyncStatus, pendingCount: number) {
   if (status === "synced") return "全案件：端末保存済み / クラウド同期済み";
-  if (status === "offline_pending") return `全案件：端末保存済み / クラウド同期待ち${pendingCount ? `（${pendingCount}件）` : ""}`;
+  if (status === "offline_pending") {
+    return `全案件：端末保存済み / クラウド同期待ち${pendingCount ? `（${pendingCount}件）` : ""}`;
+  }
   if (status === "syncing") return "全案件：端末保存済み / 同期中";
   return `全案件：端末保存済み / 同期エラー${pendingCount ? `（${pendingCount}件）` : ""}`;
+}
+
+function firstSyncMessage() {
+  const record = getPendingOfflineRecords().find((item) => item.syncError);
+  return record?.syncError || "";
 }
 
 export function SyncStatusBanner() {
@@ -38,7 +45,11 @@ export function SyncStatusBanner() {
       nextStatus = "offline_pending";
     }
     setSyncStatus(nextStatus);
-    if (nextStatus === "synced") setMessage("");
+    if (nextStatus === "synced") {
+      setMessage("");
+    } else {
+      setMessage(firstSyncMessage());
+    }
     return { nextStatus, pendingCount: pending.length };
   }
 
@@ -64,7 +75,7 @@ export function SyncStatusBanner() {
       });
       refreshStatus();
       if (pendingAfterSync.length) {
-        setMessage(result.message);
+        setMessage(firstSyncMessage() || result.message);
       } else {
         setMessage("");
       }
@@ -110,7 +121,7 @@ export function SyncStatusBanner() {
   return (
     <div className={`sync-banner ${visibleStatus}`}>
       <span>{statusText(visibleStatus, pendingCount)}</span>
-      {message ? <span className="sync-banner-message">{message}</span> : null}
+      {message ? <span className="sync-banner-message">詳細: {message}</span> : null}
       {pendingCount || visibleStatus === "sync_failed" ? (
         <button type="button" onClick={runSync} disabled={getNetworkStatus() === "offline" || visibleStatus === "syncing"}>
           <RefreshCw size={16} /> 再同期

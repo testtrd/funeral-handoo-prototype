@@ -24,8 +24,8 @@ function normalizeFirebaseEnvValue(value: string | undefined) {
     .trim();
 }
 
-function firebaseConfig(): FirebaseOptions | null {
-  const config: FirebaseOptions = {
+function rawFirebaseConfig(): FirebaseOptions {
+  return {
     apiKey: normalizeFirebaseEnvValue(process.env.NEXT_PUBLIC_FIREBASE_API_KEY),
     authDomain: normalizeFirebaseEnvValue(process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN),
     projectId: normalizeFirebaseEnvValue(process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID),
@@ -34,8 +34,33 @@ function firebaseConfig(): FirebaseOptions | null {
     appId: normalizeFirebaseEnvValue(process.env.NEXT_PUBLIC_FIREBASE_APP_ID),
     measurementId: normalizeFirebaseEnvValue(process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID)
   };
+}
 
+function firebaseConfig(): FirebaseOptions | null {
+  const config = rawFirebaseConfig();
   return config.apiKey && config.authDomain && config.projectId && config.appId ? config : null;
+}
+
+export function getFirebaseDebugInfo() {
+  const config: FirebaseOptions = {
+    ...rawFirebaseConfig()
+  };
+  const missing = [
+    !config.apiKey ? "NEXT_PUBLIC_FIREBASE_API_KEY" : "",
+    !config.authDomain ? "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN" : "",
+    !config.projectId ? "NEXT_PUBLIC_FIREBASE_PROJECT_ID" : "",
+    !config.appId ? "NEXT_PUBLIC_FIREBASE_APP_ID" : ""
+  ].filter(Boolean);
+  return {
+    configured: missing.length === 0,
+    missing,
+    projectId: config.projectId || "",
+    authDomain: config.authDomain || "",
+    appIdPresent: Boolean(config.appId),
+    apiKeyPresent: Boolean(config.apiKey),
+    messagingSenderIdPresent: Boolean(config.messagingSenderId),
+    storageBucketPresent: Boolean(config.storageBucket)
+  };
 }
 
 export function isFirebaseConfigured() {
@@ -81,9 +106,15 @@ export async function ensureFirebaseAuthSession(): Promise<User | null> {
     console.info("[Firebase Auth] Anonymous sign-in succeeded.", { uid: credential.user.uid });
     return credential.user;
   } catch (error) {
+    const firebaseError = error as { code?: string; message?: string };
     console.warn(
       "[Firebase Auth] Anonymous sign-in failed. If Firestore rules require authentication, cloud sync will fail.",
-      error
+      {
+        code: firebaseError.code,
+        message: firebaseError.message,
+        debug: getFirebaseDebugInfo(),
+        error
+      }
     );
     return null;
   }
