@@ -94,6 +94,7 @@ export default function AdminDashboard() {
   const [filters, setFilters] = useState({ branch: "", vendor: "", date: "", keyword: "", reservation: "", status: "" });
   const [role, setRole] = useState("");
   const [printReport, setPrintReport] = useState<"vendor" | "internal">("internal");
+  const [printJobs, setPrintJobs] = useState<Array<{ record: HandoffRecord; type: "vendor" | "internal" }>>([]);
   const [pdfJob, setPdfJob] = useState<{ record: HandoffRecord; type: "relative" | "vendor" | "internal" } | null>(null);
   const [bulkMode, setBulkMode] = useState(false);
   const [familyCopyTestMethod, setFamilyCopyTestMethod] = useState<"email" | "sms">("email");
@@ -131,6 +132,12 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     return subscribeHandoffRecords(() => loadRecords(), 5000);
+  }, []);
+
+  useEffect(() => {
+    const clearPrintJobs = () => setPrintJobs([]);
+    window.addEventListener("afterprint", clearPrintJobs);
+    return () => window.removeEventListener("afterprint", clearPrintJobs);
   }, []);
 
   const selected = records.find((record) => record.id === selectedId);
@@ -464,6 +471,16 @@ export default function AdminDashboard() {
     selectableRecords.forEach(exportHandoffRecordJson);
   }
 
+  function printSelectedReports(type: "vendor" | "internal") {
+    if (!selectableRecords.length) {
+      alert("印刷する案件を選択してください。");
+      return;
+    }
+    setPrintReport(type);
+    setPrintJobs(selectableRecords.map((record) => ({ record, type })));
+    window.setTimeout(() => window.print(), 80);
+  }
+
   function toggleRecordSelection(id: string) {
     setSelectedRecordIds((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
   }
@@ -641,7 +658,7 @@ export default function AdminDashboard() {
   }
 
   return (
-    <main className="admin-shell">
+    <main className={printJobs.length ? "admin-shell printing-reports" : "admin-shell"}>
       <header className="admin-header">
         <div>
           <p className="eyebrow">ダッシュボード</p>
@@ -702,7 +719,8 @@ export default function AdminDashboard() {
             <button onClick={() => recreatePdfForSelected("relative")} disabled={!selectableRecords.length}><FileDown size={18} /> 親族控えPDFを保存</button>
             {isAdmin ? <button onClick={exportJsonForSelected} disabled={!selectableRecords.length}><FileJson size={18} /> JSON</button> : null}
             <button onClick={markInternalCopyStoredForSelected} disabled={!selectableRecords.length}>社内保管済み</button>
-            <button onClick={() => window.print()} disabled={!selectableRecords.length}>PDFを印刷</button>
+            <button onClick={() => printSelectedReports("vendor")} disabled={!selectableRecords.length}>業者控えを印刷</button>
+            <button onClick={() => printSelectedReports("internal")} disabled={!selectableRecords.length}>社内控えを印刷</button>
             <button onClick={shareVendorPdfForSelected} disabled={!selectableRecords.length}>PDFを共有</button>
             <button onClick={closeBulkMode}>選択を閉じる</button>
           </div>
@@ -751,6 +769,13 @@ export default function AdminDashboard() {
         <div ref={internalPdfRef}>
           {pdfJob ? <InternalStorageReport data={pdfJob.record.data} /> : null}
         </div>
+      </div>
+      <div className="print-only admin-print-source">
+        {printJobs.map(({ record, type }) => (
+          <div className="admin-print-page" key={`${record.id}-${type}`}>
+            {type === "vendor" ? <PaperReport data={record.data} /> : <InternalStorageReport data={record.data} />}
+          </div>
+        ))}
       </div>
     </main>
   );

@@ -1879,6 +1879,25 @@ textarea {
     display: block;
   }
 
+  .admin-shell.printing-reports > :not(.admin-print-source) {
+    display: none !important;
+  }
+
+  .admin-print-source {
+    display: block !important;
+  }
+
+  .admin-print-page {
+    display: block;
+    break-after: page;
+    page-break-after: always;
+  }
+
+  .admin-print-page:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+
   .app-shell {
     width: 100%;
     padding: 0;
