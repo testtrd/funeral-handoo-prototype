@@ -1491,6 +1491,22 @@ textarea {
   line-height: var(--paper-line-height);
 }
 
+.paper-col-side {
+  width: 7%;
+}
+
+.paper-col-label {
+  width: 8%;
+}
+
+.paper-col-main {
+  width: 19%;
+}
+
+.paper-col-mid {
+  width: 14%;
+}
+
 .paper-table th,
 .paper-table td {
   border: var(--paper-cell-border);
@@ -1515,6 +1531,47 @@ textarea {
   writing-mode: vertical-rl;
   width: 34px;
   letter-spacing: 0;
+}
+
+.paper-word-row th,
+.paper-word-row td {
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
+.paper-check-cell {
+  width: 22px;
+  color: rgba(31, 107, 91, 0.18);
+  font-size: 18px;
+  font-weight: 700;
+  text-align: center;
+  background: #fff;
+}
+
+.paper-number-cell {
+  width: 28px;
+  color: #222;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  background: #fff;
+  white-space: nowrap;
+}
+
+.paper-schedule-line {
+  display: grid;
+  grid-template-columns: auto minmax(130px, 1fr) minmax(120px, 1fr);
+  align-items: center;
+  gap: 4px 12px;
+}
+
+.paper-schedule-line.cremation {
+  grid-template-columns: auto minmax(110px, 1fr) minmax(110px, 1fr) minmax(110px, 1fr);
+}
+
+.paper-schedule-line .paper-hope {
+  float: none;
+  margin-left: 0.6em;
 }
 
 .paper-inline-list {

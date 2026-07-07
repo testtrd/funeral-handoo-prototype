@@ -2643,6 +2643,15 @@ export function PaperReport({ data, compact = false, debugMode = false }: { data
     <div className={debugMode ? "paper-report paper-report-debug" : "paper-report"}>
       <div className="paper-title">{`業務引継書（${vendor?.name || "業者未選択"}）`}</div>
       <table className="paper-table">
+        <colgroup>
+          <col className="paper-col-side" />
+          <col className="paper-col-label" />
+          <col className="paper-col-main" />
+          <col className="paper-col-main" />
+          <col className="paper-col-mid" />
+          <col className="paper-col-mid" />
+          <col className="paper-col-main" />
+        </colgroup>
         <tbody>
           <tr>
             <th rowSpan={3} className="vertical">{data.chiefMourner.role || "喪主・代表者"}</th>
@@ -2717,57 +2726,121 @@ export function PaperReport({ data, compact = false, debugMode = false }: { data
             <td colSpan={3}></td>
             <td colSpan={3}>連絡状況 {data.religion.hasPriest !== "無" ? data.religion.contactStatus : ""}</td>
           </tr>
-          <tr>
-            <th>枕経等日時</th>
-            <td colSpan={6}>
+          <tr className="paper-word-row">
+            <th className="paper-check-cell">✓</th>
+            <th className="paper-number-cell">①</th>
+            <th>確認事項</th>
+            <td colSpan={4}>
+              {showVendorItems ? (
+                <div className="paper-pair-grid">
+                  {paperVendorItemRows.map(([label, value]) => (
+                    <span key={label}><strong>{label}</strong> {vendorItemValue(label, value)}</span>
+                  ))}
+                </div>
+              ) : "なし"}
+            </td>
+          </tr>
+          <tr className="paper-word-row">
+            <th className="paper-check-cell">✓</th>
+            <th className="paper-number-cell">②</th>
+            <th>宗教者へ連絡</th>
+            <td colSpan={4}>
               <div className="paper-inline-list">
-                <span>日時 {formatMonthDayTime(data.schedule.pillowSutraDateTime)}</span>
+                <span>連絡状況 {data.religion.hasPriest !== "無" ? data.religion.contactStatus : ""}</span>
+                <span>宗教者 {shouldShowPriestIdentity(data) ? data.religion.priestName : ""}</span>
+              </div>
+            </td>
+          </tr>
+          <tr className="paper-word-row">
+            <th className="paper-check-cell">✓</th>
+            <th className="paper-number-cell">③</th>
+            <th>枕経等日時</th>
+            <td colSpan={4}>
+              <div className="paper-inline-list">
+                <span>枕経 {formatMonthDayTime(data.schedule.pillowSutraDateTime)}</span>
                 <span>状態 {data.schedule.pillowSutraStatus}</span>
               </div>
             </td>
           </tr>
-          <tr>
+          <tr className="paper-word-row">
+            <th className="paper-check-cell">✓</th>
+            <th className="paper-number-cell">④</th>
             <th>通夜</th>
-            <td><StatusChoiceMarks value={data.schedule.wakeStatus} /></td>
-            <td colSpan={3}>日時 {formatMonthDayTime(data.schedule.wakeDateTime)} <span className="paper-hope">{data.schedule.wakeHope}</span></td>
-            <td colSpan={2}>場所 {data.schedule.wakePlace}</td>
+            <td colSpan={4}>
+              <div className="paper-schedule-line">
+                <span><StatusChoiceMarks value={data.schedule.wakeStatus} /></span>
+                <span>{formatMonthDayTime(data.schedule.wakeDateTime)} <span className="paper-hope">{data.schedule.wakeHope}</span></span>
+                <span>場所 {data.schedule.wakePlace}</span>
+              </div>
+            </td>
           </tr>
-          <tr>
+          <tr className="paper-word-row">
+            <th className="paper-check-cell">✓</th>
+            <th className="paper-number-cell">⑤</th>
             <th>葬儀</th>
-            <td><StatusChoiceMarks value={data.schedule.funeralStatus} /></td>
-            <td colSpan={3}>日時 {formatMonthDayTime(data.schedule.funeralDateTime)} <span className="paper-hope">{data.schedule.funeralHope}</span></td>
-            <td colSpan={2}>場所 {data.schedule.funeralPlace}</td>
+            <td colSpan={4}>
+              <div className="paper-schedule-line">
+                <span><StatusChoiceMarks value={data.schedule.funeralStatus} /></span>
+                <span>{formatMonthDayTime(data.schedule.funeralDateTime)} <span className="paper-hope">{data.schedule.funeralHope}</span></span>
+                <span>場所 {data.schedule.funeralPlace}</span>
+              </div>
+            </td>
           </tr>
-          <tr>
-            <th>火葬場予約</th>
-            <td><StatusChoiceMarks value={data.schedule.crematoriumStatus} /></td>
-            <td colSpan={2}>出棺日時 {formatMonthDayTime(data.schedule.departureDateTime)}</td>
-            <td colSpan={2}>火葬日時 {formatMonthDayTime(data.schedule.cremationDateTime)}</td>
-            <td>予約 <CircleChoiceMarks label="火葬予約状況" value={data.schedule.cremationReservationStatus} options={["済", "未"]} /></td>
+          <tr className="paper-word-row">
+            <th rowSpan={2} className="paper-check-cell">✓</th>
+            <th rowSpan={2} className="paper-number-cell">⑥</th>
+            <th rowSpan={2}>火葬場予約<br />（出棺時間）</th>
+            <td colSpan={4}>
+              <div className="paper-schedule-line cremation">
+                <span><StatusChoiceMarks value={data.schedule.crematoriumStatus} /></span>
+                <span>出棺 {formatMonthDayTime(data.schedule.departureDateTime)}</span>
+                <span>火葬 {formatMonthDayTime(data.schedule.cremationDateTime)}</span>
+              </div>
+            </td>
           </tr>
-          <tr>
-            <th>火葬補足</th>
-            <td colSpan={2}>火葬場名 {data.schedule.crematoriumName}</td>
-            <td colSpan={2}>予約番号 {data.schedule.reservationNumber}</td>
-            <td colSpan={2}>待合室 {data.schedule.waitingRoom}</td>
+          <tr className="paper-word-row">
+            <td colSpan={4}>
+              <div className="paper-schedule-line cremation">
+                <span>場所 {data.schedule.crematoriumName}</span>
+                <span>予約番号 {data.schedule.reservationNumber}</span>
+                <span>待合室 {data.schedule.waitingRoom}</span>
+                <span>予約 <CircleChoiceMarks label="火葬予約状況" value={data.schedule.cremationReservationStatus} options={["済", "未"]} /></span>
+              </div>
+            </td>
           </tr>
-          <tr>
-            <th>車両</th>
-            <td colSpan={3}>霊柩車 {data.supplies.hearse}</td>
-            <td colSpan={3}>車種 {data.supplies.vehicleType}</td>
+          <tr className="paper-word-row">
+            <th className="paper-check-cell">✓</th>
+            <th className="paper-number-cell">⑦</th>
+            <th>霊柩車</th>
+            <td colSpan={4}>
+              <div className="paper-inline-list">
+                <span>霊柩車 {data.supplies.hearse}</span>
+                <span>車種 {data.supplies.vehicleType}</span>
+              </div>
+            </td>
           </tr>
-          <tr>
+          <tr className="paper-word-row">
+            <th className="paper-check-cell">✓</th>
+            <th className="paper-number-cell">⑧</th>
             <th>電話連絡</th>
-            <td colSpan={3}>{formatMonthDayFreeTime(data.contactAndNotes.phoneContact)}</td>
-            <td colSpan={3}>朝の連絡先 {morningContactText(data)}</td>
+            <td colSpan={4}>
+              <div className="paper-inline-list">
+                <span>{formatMonthDayFreeTime(data.contactAndNotes.phoneContact)}</span>
+                <span>朝の連絡先 {morningContactText(data)}</span>
+              </div>
+            </td>
           </tr>
-          <tr>
+          <tr className="paper-word-row">
+            <th className="paper-check-cell">✓</th>
+            <th className="paper-number-cell">⑨</th>
             <th>遺影写真</th>
-            <td colSpan={6}>{data.contactAndNotes.portraitPhoto}</td>
+            <td colSpan={4}>写真 <CircleChoiceMarks label="遺影写真" value={data.contactAndNotes.portraitPhoto} options={["有", "未定", "無"]} /></td>
           </tr>
-          <tr>
-            <th>使用品</th>
-            <td colSpan={6}>
+          <tr className="paper-word-row">
+            <th className="paper-check-cell">✓</th>
+            <th className="paper-number-cell">⑩</th>
+            <th>使用品<br />搬送距離等</th>
+            <td colSpan={4}>
               <table className="paper-subtable supplies-subtable supplies-compact">
                 <tbody>
                   <tr>
@@ -2812,18 +2885,6 @@ export function PaperReport({ data, compact = false, debugMode = false }: { data
               ) : "なし"}
             </td>
           </tr>
-          {showVendorItems ? (
-            <tr>
-              <th>確認事項</th>
-              <td colSpan={6}>
-                <div className="paper-pair-grid">
-                  {paperVendorItemRows.map(([label, value]) => (
-                    <span key={label}><strong>{label}</strong> {vendorItemValue(label, value)}</span>
-                  ))}
-                </div>
-              </td>
-            </tr>
-          ) : null}
           {!compact ? (
             <tr>
               <th>署名</th>
