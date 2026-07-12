@@ -379,12 +379,10 @@ function HelpBot({ step }: { step: number }) {
   const content = helpFaqByStep[step];
   const [open, setOpen] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [showFallback, setShowFallback] = useState(false);
 
   useEffect(() => {
     setOpen(false);
     setSelectedIndex(0);
-    setShowFallback(false);
   }, [step]);
 
   if (!content) return null;
@@ -404,19 +402,15 @@ function HelpBot({ step }: { step: number }) {
                 <button
                   key={faq.question}
                   type="button"
-                  className={index === selectedIndex && !showFallback ? "selected" : ""}
-                  onClick={() => {
-                    setSelectedIndex(index);
-                    setShowFallback(false);
-                  }}
+                  className={index === selectedIndex ? "selected" : ""}
+                  onClick={() => setSelectedIndex(index)}
                 >
                   {faq.question}
                 </button>
               ))}
-              <button type="button" className={showFallback ? "selected" : ""} onClick={() => setShowFallback(true)}>この中にない内容</button>
             </div>
             <div className="help-bot-answer">
-              {showFallback ? "恐れ入りますが、この内容は担当ドライバーへお声がけください。" : selected.answer}
+              {selected.answer}
             </div>
           </div>
         </section>
@@ -1753,7 +1747,7 @@ function persistFamilyCopyData(nextData: HandoffData, idOverride?: string | null
         <section className="section">
           <h2>個人情報の取扱いに関する同意書</h2>
           <PrivacyConsentView />
-          <div className="grid">
+          <div className="grid privacy-consent-form">
             <CompactChoice
               label="同意"
               value={data.privacyConsent.agreed === true ? "同意する" : data.privacyConsent.agreed === false ? "同意しない" : ""}
@@ -1762,12 +1756,14 @@ function persistFamilyCopyData(nextData: HandoffData, idOverride?: string | null
               required
             />
             {data.privacyConsent.agreed === false ? (
-              <div className="error">個人情報の取扱いに同意いただけない場合、以降の個人情報入力へ進むことはできません。担当者へお声がけください。</div>
+              <div className="error privacy-consent-error">個人情報の取扱いに同意いただけない場合、以降の個人情報入力へ進むことはできません。担当者へお声がけください。</div>
             ) : null}
             <TextInput data={data} path="privacyConsent.consentDate" label="同意日" type="date" required />
-            <Field label="手書き署名" required hint="枠内に指またはタッチペンで署名してください。">
-              <SignaturePad value={data.privacyConsent.signatureDataUrl} onChange={(value) => update("privacyConsent.signatureDataUrl", value)} />
-            </Field>
+            <div className="privacy-signature-field">
+              <Field label="手書き署名" required hint="枠内に指またはタッチペンで署名してください。">
+                <SignaturePad value={data.privacyConsent.signatureDataUrl} onChange={(value) => update("privacyConsent.signatureDataUrl", value)} />
+              </Field>
+            </div>
           </div>
         </section>
       ) : null}

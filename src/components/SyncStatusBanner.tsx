@@ -120,8 +120,8 @@ export function SyncStatusBanner() {
 
   return (
     <div className={`sync-banner ${visibleStatus}`}>
-      <span>{statusText(visibleStatus, pendingCount)}</span>
-      {message ? <span className="sync-banner-message">詳細: {message}</span> : null}
+      <span className="sync-banner-status">{statusText(visibleStatus, pendingCount)}</span>
+      <span className={message ? "sync-banner-message" : "sync-banner-message empty"}>{message ? `詳細: ${message}` : "詳細なし"}</span>
       {pendingCount || visibleStatus === "sync_failed" ? (
         <button type="button" onClick={runSync} disabled={getNetworkStatus() === "offline" || visibleStatus === "syncing"}>
           <RefreshCw size={16} /> 再同期
