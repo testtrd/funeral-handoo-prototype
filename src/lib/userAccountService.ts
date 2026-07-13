@@ -1,8 +1,7 @@
 "use client";
 
-import { getFirebaseCurrentUserIdToken, getFirebaseDb, sendFirebasePasswordReset } from "@/lib/firebaseClient";
+import { getFirebaseCurrentUserIdToken, sendFirebasePasswordReset } from "@/lib/firebaseClient";
 import type { CreateUserAccountInput, UserAccount, UserAccountStatus } from "@/lib/userAccountTypes";
-import { collection, getDocs, orderBy, query } from "firebase/firestore";
 
 function normalizeUserAccount(raw: Partial<UserAccount> & { uid?: string; id?: string }): UserAccount {
   const now = new Date().toISOString();
@@ -39,11 +38,11 @@ async function requestJson<T>(url: string, init: RequestInit): Promise<T> {
 }
 
 export async function getUserAccounts(): Promise<UserAccount[]> {
-  const db = getFirebaseDb();
-  if (!db) return [];
-  const usersQuery = query(collection(db, "users"), orderBy("createdAt", "desc"));
-  const snapshot = await getDocs(usersQuery);
-  return snapshot.docs.map((item) => normalizeUserAccount({ id: item.id, ...item.data() }));
+  const result = await requestJson<{ users: UserAccount[] }>("/api/admin/users", {
+    method: "GET",
+    headers: await authHeaders()
+  });
+  return result.users.map((user) => normalizeUserAccount(user));
 }
 
 export async function createUserAccount(input: CreateUserAccountInput): Promise<UserAccount> {

@@ -4,6 +4,10 @@ import type { UserAccountStatus } from "@/lib/userAccountTypes";
 
 export const runtime = "nodejs";
 
+function errorStatus(message: string) {
+  return message.includes("権限") || message.includes("ログイン") ? 403 : 400;
+}
+
 export async function POST(request: Request, context: { params: Promise<{ uid: string }> }) {
   try {
     const { uid } = await context.params;
@@ -14,7 +18,6 @@ export async function POST(request: Request, context: { params: Promise<{ uid: s
   } catch (error) {
     const message = error instanceof Error ? error.message : "アカウント状態の変更に失敗しました。";
     console.error("[api/admin/users/status] update failed.", error);
-    const statusCode = message.includes("権限") || message.includes("ログイン") ? 403 : 400;
-    return NextResponse.json({ ok: false, message }, { status: statusCode });
+    return NextResponse.json({ ok: false, message }, { status: errorStatus(message) });
   }
 }

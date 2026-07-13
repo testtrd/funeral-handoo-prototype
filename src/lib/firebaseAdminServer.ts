@@ -1,28 +1,39 @@
 import type { AuthRole } from "@/lib/authService";
 import type { CreateUserAccountInput, UserAccount, UserAccountStatus } from "@/lib/userAccountTypes";
 
+type AdminAuth = {
+  verifyIdToken: (token: string) => Promise<{ uid: string; email?: string; role?: string; status?: string; admin?: boolean }>;
+  createUser: (input: { email: string; password: string; displayName: string; disabled?: boolean }) => Promise<{ uid: string; email?: string }>;
+  updateUser: (uid: string, input: { disabled?: boolean }) => Promise<unknown>;
+  setCustomUserClaims: (uid: string, claims: Record<string, unknown>) => Promise<void>;
+};
+
 type AdminModules = {
   getApps: () => unknown[];
   initializeApp: (options: unknown, name?: string) => unknown;
   cert: (serviceAccount: unknown) => unknown;
   getApp: (name?: string) => unknown;
-  getAuth: (app?: unknown) => {
-    verifyIdToken: (token: string) => Promise<{ uid: string; email?: string }>;
-    createUser: (input: { email: string; password: string; displayName: string; disabled?: boolean }) => Promise<{ uid: string; email?: string }>;
-    updateUser: (uid: string, input: { disabled?: boolean }) => Promise<unknown>;
-  };
-  getFirestore: (app?: unknown) => {
-    collection: (name: string) => unknown;
-  };
+  getAuth: (app?: unknown) => AdminAuth;
+  getFirestore: (app?: unknown) => FirestoreAdmin;
+};
+
+type FirestoreDoc = {
+  id: string;
+  exists: boolean;
+  data: () => Record<string, unknown> | undefined;
 };
 
 type FirestoreAdmin = {
   collection: (name: string) => {
     doc: (id: string) => {
-      get: () => Promise<{ exists: boolean; data: () => Record<string, unknown> | undefined }>;
+      get: () => Promise<FirestoreDoc>;
       set: (data: Record<string, unknown>, options?: { merge: boolean }) => Promise<void>;
       update: (data: Record<string, unknown>) => Promise<void>;
     };
+    orderBy: (field: string, direction?: "asc" | "desc") => {
+      get: () => Promise<{ docs: FirestoreDoc[] }>;
+    };
+    get: () => Promise<{ docs: FirestoreDoc[] }>;
   };
 };
 
@@ -91,12 +102,29 @@ async function getAdminServices() {
     : admin.initializeApp({ credential: admin.cert(serviceAccountFromEnv()) });
   return {
     auth: admin.getAuth(app),
-    db: admin.getFirestore(app) as FirestoreAdmin
+    db: admin.getFirestore(app)
   };
 }
 
 function roleFromValue(value: unknown): AuthRole {
   return value === "admin" || value === "office" || value === "driver" ? value : "driver";
+}
+
+function userFromDoc(doc: FirestoreDoc): UserAccount {
+  const data = doc.data() || {};
+  const now = new Date().toISOString();
+  return {
+    uid: String(data.uid || doc.id),
+    name: String(data.name || ""),
+    email: String(data.email || "").toLowerCase(),
+    department: String(data.department || ""),
+    branchId: String(data.branchId || ""),
+    role: roleFromValue(data.role),
+    status: data.status === "inactive" ? "inactive" : "active",
+    notes: String(data.notes || ""),
+    createdAt: String(data.createdAt || now),
+    updatedAt: String(data.updatedAt || now)
+  };
 }
 
 function validateCreateInput(input: CreateUserAccountInput) {
@@ -120,21 +148,33 @@ function validateCreateInput(input: CreateUserAccountInput) {
   };
 }
 
+function decodedIsAdmin(decoded: { email?: string; role?: string; status?: string; admin?: boolean }) {
+  const email = normalizeEmail(decoded.email || "");
+  if (email && adminEmails().includes(email)) return true;
+  return (decoded.role === "admin" || decoded.admin === true) && decoded.status !== "inactive";
+}
+
 export async function requireAdminUser(request: Request) {
   const header = request.headers.get("authorization") || "";
   const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
   if (!token) throw new Error("ログイン状態を確認できません。");
   const { auth, db } = await getAdminServices();
   const decoded = await auth.verifyIdToken(token);
-  const email = normalizeEmail(decoded.email || "");
-  if (email && adminEmails().includes(email)) return { decoded, auth, db };
-
-  const userDoc = await db.collection("users").doc(decoded.uid).get();
-  const data = userDoc.data();
-  if (userDoc.exists && data?.role === "admin" && data.status !== "inactive") {
+  if (decodedIsAdmin(decoded)) {
+    if (normalizeEmail(decoded.email || "") && adminEmails().includes(normalizeEmail(decoded.email || ""))) {
+      await auth.setCustomUserClaims(decoded.uid, { role: "admin", status: "active" }).catch((error) => {
+        console.warn("[Firebase Admin] Initial admin custom claim could not be refreshed.", error);
+      });
+    }
     return { decoded, auth, db };
   }
   throw new Error("この操作を行う権限がありません。");
+}
+
+export async function listEmployeeAccounts(request: Request): Promise<UserAccount[]> {
+  const { db } = await requireAdminUser(request);
+  const snapshot = await db.collection("users").orderBy("createdAt", "desc").get();
+  return snapshot.docs.map(userFromDoc);
 }
 
 export async function createEmployeeAccount(request: Request, input: CreateUserAccountInput): Promise<UserAccount> {
@@ -147,6 +187,7 @@ export async function createEmployeeAccount(request: Request, input: CreateUserA
       displayName: normalized.name,
       disabled: false
     });
+    await auth.setCustomUserClaims(firebaseUser.uid, { role: normalized.role, status: "active" });
     const now = new Date().toISOString();
     const user: UserAccount = {
       uid: firebaseUser.uid,
@@ -176,21 +217,15 @@ export async function setEmployeeAccountStatus(request: Request, uid: string, st
   const { auth, db } = await requireAdminUser(request);
   if (!uid) throw new Error("対象社員を確認できません。");
   if (status !== "active" && status !== "inactive") throw new Error("アカウント状態を確認できません。");
+
+  const userRef = db.collection("users").doc(uid);
+  const current = await userRef.get();
+  const currentData = current.data() || {};
+  const role = roleFromValue(currentData.role);
   await auth.updateUser(uid, { disabled: status === "inactive" });
+  await auth.setCustomUserClaims(uid, { role, status });
   const now = new Date().toISOString();
-  await db.collection("users").doc(uid).update({ status, updatedAt: now });
-  const updated = await db.collection("users").doc(uid).get();
-  const data = updated.data() || {};
-  return {
-    uid,
-    name: String(data.name || ""),
-    email: String(data.email || ""),
-    department: String(data.department || ""),
-    branchId: String(data.branchId || ""),
-    role: roleFromValue(data.role),
-    status,
-    notes: String(data.notes || ""),
-    createdAt: String(data.createdAt || now),
-    updatedAt: String(data.updatedAt || now)
-  };
+  await userRef.update({ status, updatedAt: now });
+  const updated = await userRef.get();
+  return userFromDoc(updated);
 }
