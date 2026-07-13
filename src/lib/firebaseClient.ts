@@ -1,6 +1,7 @@
 import { getApp, getApps, initializeApp, type FirebaseApp, type FirebaseOptions } from "firebase/app";
 import {
   getAuth,
+  onAuthStateChanged,
   sendPasswordResetEmail,
   signInAnonymously,
   signInWithEmailAndPassword,
@@ -125,7 +126,28 @@ export async function signOutFirebase() {
 
 export async function getFirebaseCurrentUserIdToken() {
   const auth = getFirebaseAuth();
-  if (!auth?.currentUser) return "";
+  if (!auth) return "";
+  const authWithReady = auth as Auth & { authStateReady?: () => Promise<void> };
+  if (authWithReady.authStateReady) {
+    await authWithReady.authStateReady();
+  } else if (!auth.currentUser) {
+    await new Promise<void>((resolve) => {
+      let unsubscribe: () => void = () => undefined;
+      const timer = setTimeout(() => {
+        unsubscribe();
+        resolve();
+      }, 3000);
+      unsubscribe = onAuthStateChanged(auth, () => {
+        clearTimeout(timer);
+        unsubscribe();
+        resolve();
+      });
+    });
+  }
+  if (!auth.currentUser) {
+    console.warn("[Firebase Auth] Current user is not available when requesting ID token.", getFirebaseDebugInfo());
+    return "";
+  }
   return auth.currentUser.getIdToken();
 }
 
