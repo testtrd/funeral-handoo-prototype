@@ -1,5 +1,6 @@
 import type { AuthRole } from "@/lib/authService";
 import type { CreateUserAccountInput, UserAccount, UserAccountStatus } from "@/lib/userAccountTypes";
+import { createRequire } from "module";
 
 type AdminAuth = {
   verifyIdToken: (token: string) => Promise<{ uid: string; email?: string; role?: string; status?: string; admin?: boolean }>;
@@ -75,17 +76,17 @@ function serviceAccountFromEnv() {
 
 async function loadAdminModules(): Promise<AdminModules> {
   try {
-    const importModule = Function("specifier", "return import(specifier)") as (specifier: string) => Promise<unknown>;
-    const appModule = await importModule("firebase-admin/app") as {
+    const serverRequire = createRequire(import.meta.url);
+    const appModule = serverRequire("firebase-admin/app") as {
       getApps: AdminModules["getApps"];
       initializeApp: AdminModules["initializeApp"];
       cert: AdminModules["cert"];
       getApp: AdminModules["getApp"];
     };
-    const authModule = await importModule("firebase-admin/auth") as {
+    const authModule = serverRequire("firebase-admin/auth") as {
       getAuth: AdminModules["getAuth"];
     };
-    const firestoreModule = await importModule("firebase-admin/firestore") as {
+    const firestoreModule = serverRequire("firebase-admin/firestore") as {
       getFirestore: AdminModules["getFirestore"];
     };
     return { ...appModule, ...authModule, ...firestoreModule };
