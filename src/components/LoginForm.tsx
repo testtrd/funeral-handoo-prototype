@@ -1,12 +1,15 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { getCurrentUser, getSafePathForUser, login } from "@/lib/authService";
+import { getCurrentUser, getSafePathForUser, login, sendPasswordReset } from "@/lib/authService";
 
 export default function LoginForm() {
-  const [userId, setUserId] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [resetSending, setResetSending] = useState(false);
 
   useEffect(() => {
     const current = getCurrentUser();
@@ -15,16 +18,38 @@ export default function LoginForm() {
     window.location.replace(getSafePathForUser(current, params.get("next")));
   }, []);
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
-    const session = login(userId.trim(), password);
-    if (!session) {
-      setError("ユーザーIDまたはパスワードが正しくありません。");
+    setMessage("");
+    setLoading(true);
+    const result = await login(email, password);
+    setLoading(false);
+    if (!result.session) {
+      setError(result.error || "メールアドレスまたはパスワードが違います。");
       return;
     }
     const params = new URLSearchParams(window.location.search);
-    window.location.href = getSafePathForUser(session, params.get("next"));
+    window.location.href = getSafePathForUser(result.session, params.get("next"));
+  }
+
+  async function resetPassword() {
+    setError("");
+    setMessage("");
+    if (!email.trim()) {
+      setError("パスワード再設定にはLINE WORKSメールアドレスを入力してください。");
+      return;
+    }
+    setResetSending(true);
+    try {
+      await sendPasswordReset(email);
+      setMessage("パスワード再設定メールを送信しました。LINE WORKSのメールをご確認ください。");
+    } catch (error) {
+      console.error("[Auth] Password reset failed.", error);
+      setError("パスワード再設定メールを送信できませんでした。メールアドレスをご確認ください。");
+    } finally {
+      setResetSending(false);
+    }
   }
 
   return (
@@ -34,22 +59,33 @@ export default function LoginForm() {
         <h1>ログイン</h1>
         <form onSubmit={submit} className="login-form">
           <label>
-            ユーザーID
-            <input value={userId} onChange={(event) => setUserId(event.target.value)} autoComplete="username" />
+            LINE WORKSメールアドレス
+            <input
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              autoComplete="username"
+              inputMode="email"
+            />
           </label>
           <label>
             パスワード
-            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" />
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoComplete="current-password"
+            />
           </label>
           {error ? <p className="error">{error}</p> : null}
-          <button className="primary" type="submit">ログイン</button>
+          {message ? <p className="send-status success">{message}</p> : null}
+          <button className="primary" type="submit" disabled={loading}>
+            {loading ? "ログイン中..." : "ログイン"}
+          </button>
         </form>
-        <div className="login-hint">
-          <strong>プロトタイプ用</strong>
-          <span>admin / admin-pass</span>
-          <span>driver01 / driver-pass</span>
-          <span>office01 / office-pass</span>
-        </div>
+        <button className="link-button" type="button" onClick={resetPassword} disabled={resetSending}>
+          {resetSending ? "送信中..." : "パスワードを忘れた場合"}
+        </button>
       </section>
     </main>
   );

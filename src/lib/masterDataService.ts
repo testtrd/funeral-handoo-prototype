@@ -9,6 +9,7 @@ import {
   vendors as defaultVendors,
   type VendorConfig
 } from "@/lib/master";
+import { hasJsonContent, safeJsonParse } from "@/lib/safeJson";
 
 const masterStorageKey = "funeral-handoff-master-data-v1";
 
@@ -201,7 +202,11 @@ export function getMasterData(): MasterData {
   if (!canUseStorage()) return buildDefaultMasterData();
   try {
     const raw = window.localStorage.getItem(masterStorageKey);
-    return raw ? normalizeMasterData(JSON.parse(raw) as Partial<MasterData>) : buildDefaultMasterData();
+    if (!hasJsonContent(raw)) return buildDefaultMasterData();
+    return normalizeMasterData(safeJsonParse<Partial<MasterData>>(raw, {
+      fallback: buildDefaultMasterData(),
+      label: "masterDataService.getMasterData localStorage master data"
+    }));
   } catch {
     return buildDefaultMasterData();
   }
@@ -350,7 +355,14 @@ export function exportMasterDataJson() {
 }
 
 export function importMasterDataJsonText(text: string) {
-  saveMasterData(normalizeMasterData(JSON.parse(text) as Partial<MasterData>));
+  const imported = safeJsonParse<Partial<MasterData> | null>(text, {
+    fallback: null,
+    label: "masterDataService.importMasterDataJsonText"
+  });
+  if (!imported) {
+    throw new Error("JSONファイルを読み込めませんでした。内容を確認してください。");
+  }
+  saveMasterData(normalizeMasterData(imported));
 }
 
 export { splitOptions };

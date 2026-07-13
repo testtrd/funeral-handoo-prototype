@@ -1,5 +1,13 @@
 import { getApp, getApps, initializeApp, type FirebaseApp, type FirebaseOptions } from "firebase/app";
-import { getAuth, signInAnonymously, type Auth, type User } from "firebase/auth";
+import {
+  getAuth,
+  sendPasswordResetEmail,
+  signInAnonymously,
+  signInWithEmailAndPassword,
+  signOut,
+  type Auth,
+  type User
+} from "firebase/auth";
 import {
   getFirestore,
   initializeFirestore,
@@ -95,6 +103,30 @@ export function getFirebaseServices() {
 
 export function getFirebaseAuth() {
   return getFirebaseServices()?.auth || null;
+}
+
+export async function signInWithEmailPassword(email: string, password: string) {
+  const auth = getFirebaseAuth();
+  if (!auth) throw new Error("Firebase設定が未登録です。");
+  return signInWithEmailAndPassword(auth, email, password);
+}
+
+export async function sendFirebasePasswordReset(email: string) {
+  const auth = getFirebaseAuth();
+  if (!auth) throw new Error("Firebase設定が未登録です。");
+  return sendPasswordResetEmail(auth, email);
+}
+
+export async function signOutFirebase() {
+  const auth = getFirebaseAuth();
+  if (!auth) return;
+  await signOut(auth);
+}
+
+export async function getFirebaseCurrentUserIdToken() {
+  const auth = getFirebaseAuth();
+  if (!auth?.currentUser) return "";
+  return auth.currentUser.getIdToken();
 }
 
 export async function ensureFirebaseAuthSession(): Promise<User | null> {

@@ -15,7 +15,7 @@ export function AuthGate({ allowedRoles, children }: { allowedRoles?: AuthRole[]
       return;
     }
     if (allowedRoles?.length && !allowedRoles.includes(current.role)) {
-      if (window.location.pathname.startsWith("/admin") && current.role === "driver") {
+      if (window.location.pathname.startsWith("/admin") && current.role !== "admin") {
         window.location.replace("/dashboard");
         return;
       }
@@ -42,7 +42,6 @@ export function AuthGate({ allowedRoles, children }: { allowedRoles?: AuthRole[]
           <p className="error">この画面を表示する権限がありません。</p>
           <div className="toolbar">
             <a className="button-link" href={getDefaultPathForRole(user.role)}>利用できる画面へ移動</a>
-            {user.role !== "driver" ? <a className="button-link" href="/admin">管理画面へ移動</a> : null}
             <button
               onClick={() => {
                 logout();

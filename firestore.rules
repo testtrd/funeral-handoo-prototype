@@ -2,8 +2,28 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && userProfile().data.role == "admin"
+        && userProfile().data.status != "inactive";
+    }
+
     match /handoffRecords/{recordId} {
-      allow read, create, update, delete: if request.auth != null;
+      allow read, create, update, delete: if signedIn();
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn();
+      allow create, update: if isAdmin();
+      allow delete: if false;
     }
 
     match /{document=**} {

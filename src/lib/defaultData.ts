@@ -87,6 +87,7 @@ export const defaultData: HandoffData = {
     other: ""
   },
   contactAndNotes: {
+    phoneContactEnabled: "",
     phoneContact: { month: "", day: "", time: "" },
     portraitPhoto: "",
     funeralCompanyContact: ""

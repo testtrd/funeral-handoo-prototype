@@ -1,4 +1,4 @@
-import { collection, doc, getDocs, setDoc } from "firebase/firestore";
+import { collection, deleteDoc, doc, getDocs, onSnapshot, setDoc, type Unsubscribe } from "firebase/firestore";
 import {
   ensureFirebaseAuthSession,
   getFirebaseDb,
@@ -31,6 +31,17 @@ function toFirestoreRecord(record: HandoffRecord): Record<string, unknown> {
     ...record,
     cloudUpdatedAt: new Date().toISOString()
   }) as Record<string, unknown>;
+}
+
+function fromFirestoreRecord(id: string, data: unknown): HandoffRecord {
+  const record = data as HandoffRecord & { cloudUpdatedAt?: string };
+  return {
+    ...record,
+    id: record.id || id,
+    syncStatus: "synced",
+    lastSyncedAt: record.lastSyncedAt || record.cloudUpdatedAt || record.updatedAt || new Date().toISOString(),
+    syncError: ""
+  };
 }
 
 function firebaseErrorMessage(error: unknown) {
@@ -185,7 +196,7 @@ export async function getCloudHandoffRecords() {
       collection: handoffCollectionName,
       count: snapshot.docs.length
     });
-    return snapshot.docs.map((item) => item.data() as HandoffRecord);
+    return snapshot.docs.map((item) => fromFirestoreRecord(item.id, item.data()));
   } catch (error) {
     const firebaseError = error as { code?: string; message?: string };
     const message = firebaseErrorMessage(error);
@@ -204,4 +215,70 @@ export async function getCloudHandoffRecords() {
     });
     return [];
   }
+}
+
+export async function deleteHandoffRecordFromCloud(recordId: string) {
+  const db = getFirebaseDb();
+  if (!canUseFirebase() || !db) return;
+  const user = await ensureFirebaseAuthSession();
+  if (!user) return;
+  await deleteDoc(doc(db, handoffCollectionName, recordId));
+}
+
+export async function subscribeCloudHandoffRecords(
+  onRecords: (records: HandoffRecord[]) => void,
+  onError?: (message: string) => void
+): Promise<Unsubscribe | null> {
+  const db = getFirebaseDb();
+  if (!canUseFirebase() || !db) return null;
+
+  try {
+    const user = await ensureFirebaseAuthSession();
+    if (!user) return null;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Firebase Authentication縺ｮ蛹ｿ蜷阪Ο繧ｰ繧､繝ｳ縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・";
+    console.error("[Firestore sync] onSnapshot skipped because auth failed.", {
+      collection: handoffCollectionName,
+      message,
+      debug: getFirebaseDebugInfo(),
+      error
+    });
+    onError?.(message);
+    return null;
+  }
+
+  console.info("[Firestore sync] onSnapshot start.", {
+    collection: handoffCollectionName,
+    debug: getFirebaseDebugInfo()
+  });
+
+  return onSnapshot(
+    collection(db, handoffCollectionName),
+    (snapshot) => {
+      const records = snapshot.docs.map((item) => fromFirestoreRecord(item.id, item.data()));
+      console.info("[Firestore sync] onSnapshot received.", {
+        collection: handoffCollectionName,
+        count: records.length
+      });
+      onRecords(records);
+    },
+    (error) => {
+      const firebaseError = error as { code?: string; message?: string };
+      const message = firebaseErrorMessage(error);
+      console.error("[Firestore sync] onSnapshot failed.", {
+        collection: handoffCollectionName,
+        code: firebaseError.code,
+        message: firebaseError.message,
+        debug: getFirebaseDebugInfo(),
+        error
+      });
+      logClientSyncError("Firestore onSnapshot failed.", {
+        collection: handoffCollectionName,
+        code: firebaseError.code || "",
+        message,
+        ...getFirebaseDebugInfo()
+      });
+      onError?.(message);
+    }
+  );
 }

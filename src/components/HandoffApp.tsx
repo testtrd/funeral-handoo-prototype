@@ -24,6 +24,7 @@ import {
 } from "@/lib/master";
 import { getBranches, getExtraQuestions, getVendorMap, getVendorRule, type ExtraQuestion } from "@/lib/masterDataService";
 import { getNetworkStatus, saveHandoffProgress, saveHandoffRecord, type HandoffRecordStatus, type HandoffSyncStatus } from "@/lib/handoffStorage";
+import { hasJsonContent, safeJsonParse } from "@/lib/safeJson";
 import type { DeathDateValue, EraDateValue, HandoffData, MonthDayTimeValue } from "@/types/form";
 
 const storageKey = "funeral-handoff-draft-v3";
@@ -713,6 +714,11 @@ function morningContactText(data: HandoffData) {
   return data.chiefMourner.preferredContact || "";
 }
 
+function phoneContactDisplayText(data: HandoffData) {
+  if (data.contactAndNotes.phoneContactEnabled === "無") return "電話連絡なし";
+  return formatMonthDayFreeTime(data.contactAndNotes.phoneContact);
+}
+
 function templeIntroductionWantedText(data: HandoffData) {
   return data.handoffNotes.templeIntroductionWanted || data.religion.introductionWanted || "";
 }
@@ -853,6 +859,9 @@ function migrateDraft(raw: unknown): HandoffData {
   if (!merged.contactAndNotes.phoneContact.time && legacyContact?.phoneContactTime) {
     merged.contactAndNotes.phoneContact = { month: "", day: "", time: legacyContact.phoneContactTime };
   }
+  if (!merged.contactAndNotes.phoneContactEnabled) {
+    merged.contactAndNotes.phoneContactEnabled = merged.contactAndNotes.phoneContact.day || merged.contactAndNotes.phoneContact.time ? "有" : "";
+  }
   if (!merged.handoffNotes.freeText && legacyContact?.vendorHandoffMemo) {
     merged.handoffNotes.freeText = legacyContact.vendorHandoffMemo;
   }
@@ -915,15 +924,20 @@ export default function HandoffApp() {
       window.localStorage.getItem("funeral-handoff-draft-v1");
     const editingStep = Number(window.localStorage.getItem(editingStepKey));
     const editingRecordId = window.localStorage.getItem(editingRecordIdKey);
-    if (editingRecordId && raw) {
+    if (editingRecordId && hasJsonContent(raw)) {
       try {
-        setData(migrateDraft(JSON.parse(raw)));
+        const parsedDraft = safeJsonParse<unknown>(raw, {
+          fallback: null,
+          label: "HandoffApp initial editing draft localStorage"
+        });
+        if (!parsedDraft) throw new Error("empty draft");
+        setData(migrateDraft(parsedDraft));
         setPersistDraft(true);
         setHasStoredDraft(false);
       } catch {
         setHasStoredDraft(true);
       }
-    } else if (raw) {
+    } else if (hasJsonContent(raw)) {
       setHasStoredDraft(true);
     } else {
       setPersistDraft(true);
@@ -1419,7 +1433,12 @@ function persistFamilyCopyData(nextData: HandoffData, idOverride?: string | null
       window.localStorage.getItem("funeral-handoff-draft-v1");
     if (!raw) return;
     try {
-      setData(migrateDraft(JSON.parse(raw)));
+      const parsedDraft = safeJsonParse<unknown>(raw, {
+        fallback: null,
+        label: "HandoffApp restoreDraft localStorage"
+      });
+      if (!parsedDraft) throw new Error("empty draft");
+      setData(migrateDraft(parsedDraft));
       setPersistDraft(true);
       setHasStoredDraft(false);
     } catch {
@@ -1727,7 +1746,19 @@ function persistFamilyCopyData(nextData: HandoffData, idOverride?: string | null
             <TextInput data={data} path="transport.pickupName" label="お迎え先名称" placeholder="例：安城更生病院" />
             <SelectInput data={data} path="transport.destinationType" label="搬送先" options={["自宅", "ホール", "霊安室", "その他"]} />
             <TextInput data={data} path="transport.destinationPlace" label="搬送先場所" />
-            <MonthDayTimeInput label="電話連絡" value={data.contactAndNotes.phoneContact} onChange={(value) => update("contactAndNotes.phoneContact", { ...value, month: "" })} freeTextTime hideMonth />
+            <CompactChoice
+              label="電話連絡の有無"
+              value={data.contactAndNotes.phoneContactEnabled}
+              options={["有", "無"]}
+              onChange={(value) => {
+                update("contactAndNotes.phoneContactEnabled", value);
+                if (value === "無") update("contactAndNotes.phoneContact", { month: "", day: "", time: "" });
+              }}
+              hint="電話連絡がある業者の場合のみ「有」を選択すると、日にち・時間の入力欄が表示されます。"
+            />
+            {data.contactAndNotes.phoneContactEnabled === "有" ? (
+              <MonthDayTimeInput label="電話連絡（日にち・時間）" value={data.contactAndNotes.phoneContact} onChange={(value) => update("contactAndNotes.phoneContact", { ...value, month: "" })} freeTextTime hideMonth />
+            ) : null}
             <TextInput data={data} path="contactAndNotes.funeralCompanyContact" label="葬儀社連絡先" readOnly />
           </div>
         </section>
@@ -1781,7 +1812,7 @@ function persistFamilyCopyData(nextData: HandoffData, idOverride?: string | null
             {vendorRule.showPreferredContact !== false ? (
               <Field label="今後の流れ">
                 <span className="small">今後の流れについて、以下の内容でご連絡予定です。</span>
-                <div className="readonly-box">{formatMonthDayFreeTime(data.contactAndNotes.phoneContact) || "電話連絡内容は未入力です。"}</div>
+                <div className="readonly-box">{phoneContactDisplayText(data) || "電話連絡内容は未入力です。"}</div>
                 <SelectInput data={data} path="chiefMourner.preferredContact" label="希望連絡先" options={["自宅", "携帯", "上記以外"]} hint="例：葬儀社から携帯へ連絡希望" />
               </Field>
             ) : null}
@@ -2471,7 +2502,7 @@ function relativeCopyRows(data: HandoffData): Array<[string, string]> {
     ["火葬予約状況", data.schedule.cremationReservationStatus],
     ["予約番号", data.schedule.reservationNumber],
     ["待合室", data.schedule.waitingRoom],
-    ["葬儀社からの連絡予定", formatMonthDayFreeTime(data.contactAndNotes.phoneContact)],
+    ["葬儀社からの連絡予定", phoneContactDisplayText(data)],
     ["連絡先", morningContactText(data)],
     ["控えの送付先", familyCopyDeliveryText(data.familyCopyDelivery)]
   ];
@@ -2821,7 +2852,7 @@ export function PaperReport({ data, compact = false, debugMode = false }: { data
             <th>電話連絡</th>
             <td colSpan={4}>
               <div className="paper-inline-list">
-                <span>{formatMonthDayFreeTime(data.contactAndNotes.phoneContact)}</span>
+                <span>{phoneContactDisplayText(data)}</span>
                 <span>朝の連絡先 {morningContactText(data)}</span>
               </div>
             </td>

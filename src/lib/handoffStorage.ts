@@ -1,8 +1,15 @@
 import { defaultData } from "@/lib/defaultData";
 import { downloadJsonFile, sanitizeFileName } from "@/lib/downloadService";
-import { isCloudSaveAvailable, saveHandoffRecordToCloud } from "@/lib/firebaseHandoffRepository";
+import {
+  deleteHandoffRecordFromCloud,
+  getCloudHandoffRecords,
+  isCloudSaveAvailable,
+  saveHandoffRecordToCloud,
+  subscribeCloudHandoffRecords
+} from "@/lib/firebaseHandoffRepository";
 import { getCurrentUser, type AuthUser } from "@/lib/authService";
 import { getBranches, getVendorMap, getVendorRule, type VendorRule } from "@/lib/masterDataService";
+import { safeJsonParse } from "@/lib/safeJson";
 import type { HandoffData } from "@/types/form";
 
 const recordsKey = "funeral-handoff-records-v1";
@@ -151,6 +158,66 @@ function saveRecords(records: HandoffRecord[]) {
   window.dispatchEvent(new CustomEvent(recordsUpdatedEventName));
 }
 
+function normalizeRecord(record: HandoffRecord): HandoffRecord {
+  const createdBy = record.createdBy || null;
+  const status = normalizeHandoffStatus(record.status);
+  return {
+    ...record,
+    status,
+    completedAt: record.completedAt || null,
+    submittedAt: record.submittedAt || null,
+    createdBy,
+    updatedBy: record.updatedBy || null,
+    assignedDriver: record.assignedDriver || (createdBy?.role === "driver" ? { userId: createdBy.userId, name: createdBy.name } : null),
+    syncStatus: isStaleSyncing(record) ? "offline_pending" : record.syncStatus || "synced",
+    lastSavedLocalAt: record.lastSavedLocalAt || record.updatedAt,
+    lastSyncedAt: record.lastSyncedAt || null,
+    syncError: isStaleSyncing(record) ? "繧ｯ繝ｩ繧ｦ繝牙酔譛溘↓譎る俣縺後°縺九▲縺ｦ縺・∪縺吶ょ・蜷梧悄蠕・■縺ｧ縺吶・" : record.syncError || "",
+    handoffProgress: normalizeProgressPercent(record.handoffProgress, status),
+    masterSnapshot: record.masterSnapshot || { branch: null, vendor: null, vendorRule: null },
+    data: withDataDefaults(record.data)
+  };
+}
+
+function recordTimestamp(record: Pick<HandoffRecord, "updatedAt" | "lastSavedLocalAt" | "lastSyncedAt">) {
+  const value = record.updatedAt || record.lastSavedLocalAt || record.lastSyncedAt || "";
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function shouldKeepLocalRecord(localRecord: HandoffRecord, cloudRecord: HandoffRecord) {
+  const localHasUnsyncedWork = localRecord.syncStatus === "offline_pending" || localRecord.syncStatus === "sync_failed" || localRecord.syncStatus === "syncing";
+  if (localHasUnsyncedWork && recordTimestamp(localRecord) >= recordTimestamp(cloudRecord)) return true;
+  return recordTimestamp(localRecord) > recordTimestamp(cloudRecord);
+}
+
+function mergeCloudRecordsIntoLocal(cloudRecords: HandoffRecord[], pruneSyncedMissing = false) {
+  if (!canUseStorage()) return [];
+  const byId = new Map<string, HandoffRecord>();
+  const cloudIds = new Set(cloudRecords.map((record) => record.id));
+  getHandoffRecords().forEach((record) => {
+    if (pruneSyncedMissing && record.syncStatus === "synced" && !cloudIds.has(record.id)) return;
+    byId.set(record.id, record);
+  });
+
+  cloudRecords.forEach((rawRecord) => {
+    const cloudRecord = normalizeRecord({
+      ...rawRecord,
+      syncStatus: "synced",
+      syncError: "",
+      lastSyncedAt: rawRecord.lastSyncedAt || new Date().toISOString()
+    });
+    const localRecord = byId.get(cloudRecord.id);
+    if (!localRecord || !shouldKeepLocalRecord(localRecord, cloudRecord)) {
+      byId.set(cloudRecord.id, cloudRecord);
+    }
+  });
+
+  const merged = Array.from(byId.values()).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  saveRecords(merged);
+  return merged;
+}
+
 function isStaleSyncing(record: Pick<HandoffRecord, "syncStatus" | "lastSavedLocalAt">) {
   if (record.syncStatus !== "syncing") return false;
   const savedAt = new Date(record.lastSavedLocalAt).getTime();
@@ -258,7 +325,11 @@ function withDataDefaults(data: HandoffData): HandoffData {
 export function getHandoffRecords(): HandoffRecord[] {
   if (!canUseStorage()) return [];
   try {
-    const records = JSON.parse(window.localStorage.getItem(recordsKey) || "[]") as HandoffRecord[];
+    const records = safeJsonParse<HandoffRecord[]>(window.localStorage.getItem(recordsKey), {
+      fallback: [],
+      label: "handoffStorage.getHandoffRecords localStorage records"
+    });
+    return records.map((record) => normalizeRecord(record)).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
     return records
       .map((record) => {
         const createdBy = record.createdBy || null;
@@ -366,6 +437,11 @@ export function deleteHandoffRecord(id: string) {
   if (!canUseStorage()) throw new Error("この環境では削除できません。");
   const records = getHandoffRecords().filter((record) => record.id !== id);
   saveRecords(records);
+  if (isCloudSaveAvailable() && getNetworkStatus() === "online") {
+    void deleteHandoffRecordFromCloud(id).catch((error) => {
+      console.error("[Firestore sync] deleteDoc failed.", { recordId: id, error });
+    });
+  }
 }
 
 export function getPendingOfflineRecords() {
@@ -484,17 +560,54 @@ export function updateHandoffStatus(record: HandoffRecord, status: HandoffRecord
   return saveHandoffRecord(record.data, { id: record.id, status, pdfGenerated: record.pdf.generated });
 }
 
+export async function refreshHandoffRecordsFromCloud() {
+  if (!canUseStorage() || !isCloudSaveAvailable() || getNetworkStatus() === "offline") return getHandoffRecords();
+  const cloudRecords = await getCloudHandoffRecords();
+  return mergeCloudRecordsIntoLocal(cloudRecords);
+}
+
 export function subscribeHandoffRecords(callback: (records: HandoffRecord[]) => void, intervalMs = 5000) {
   if (!canUseStorage()) return () => {};
   const emit = () => callback(getHandoffRecords());
+  const refreshCloud = () => {
+    void refreshHandoffRecordsFromCloud()
+      .then((records) => callback(records))
+      .catch((error) => {
+        console.error("[Firestore sync] refresh cloud records failed.", error);
+        emit();
+      });
+  };
   emit();
+  refreshCloud();
+  let unsubscribeCloud: (() => void) | null = null;
+  let cancelled = false;
+  void subscribeCloudHandoffRecords(
+    (cloudRecords) => {
+      if (cancelled) return;
+      callback(mergeCloudRecordsIntoLocal(cloudRecords));
+    },
+    (message) => {
+      console.error("[Firestore sync] realtime listener failed.", { message });
+      emit();
+    }
+  ).then((unsubscribe) => {
+    if (cancelled) {
+      unsubscribe?.();
+      return;
+    }
+    unsubscribeCloud = unsubscribe;
+  });
   const timer = window.setInterval(emit, intervalMs);
   window.addEventListener(recordsUpdatedEventName, emit);
   window.addEventListener("storage", emit);
+  window.addEventListener("online", refreshCloud);
   return () => {
+    cancelled = true;
     window.clearInterval(timer);
+    unsubscribeCloud?.();
     window.removeEventListener(recordsUpdatedEventName, emit);
     window.removeEventListener("storage", emit);
+    window.removeEventListener("online", refreshCloud);
   };
 }
 

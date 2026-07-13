@@ -180,6 +180,7 @@ export type HandoffData = {
     other: string;
   };
   contactAndNotes: {
+    phoneContactEnabled: "有" | "無" | "";
     phoneContact: MonthDayTimeValue;
     portraitPhoto: "有" | "未定" | "無" | "";
     funeralCompanyContact: string;

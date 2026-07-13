@@ -158,6 +158,16 @@ textarea {
   font-size: 13px;
 }
 
+.link-button {
+  min-height: auto;
+  margin-top: 14px;
+  border: none;
+  background: transparent;
+  color: var(--accent-strong);
+  padding: 0;
+  text-decoration: underline;
+}
+
 .auth-status {
   display: inline-flex;
   align-items: center;
@@ -257,6 +267,48 @@ textarea {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;
+}
+
+.user-admin-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.user-admin-form,
+.user-admin-list {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.user-admin-form h2,
+.user-admin-list h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.user-admin-form label {
+  display: grid;
+  gap: 6px;
+  font-weight: 700;
+}
+
+.two-column-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.user-admin-list-header {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(240px, 360px);
+  gap: 12px;
+  align-items: center;
 }
 
 .admin-bulk-actions {
@@ -381,10 +433,10 @@ textarea {
 
 .sync-banner {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) 128px;
   align-items: center;
   gap: 2px 10px;
-  min-height: 68px;
+  height: 68px;
   border: 1px solid #c9ddd6;
   border-radius: 8px;
   background: #f7fbfa;
@@ -392,11 +444,18 @@ textarea {
   padding: 10px 12px;
   margin-bottom: 14px;
   font-weight: 700;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .sync-banner-status {
   grid-column: 1;
-  line-height: 1.25;
+  min-height: 22px;
+  font-size: 14px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sync-banner.offline_pending {
@@ -420,9 +479,24 @@ textarea {
 .sync-banner button {
   grid-column: 2;
   grid-row: 1 / span 2;
+  width: 118px;
+  min-width: 118px;
+  height: 36px;
   min-height: 36px;
   margin-left: auto;
   padding: 6px 10px;
+  justify-content: center;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1;
+  box-sizing: border-box;
+  white-space: nowrap;
+}
+
+.sync-banner button svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
 }
 
 .sync-banner-message {
@@ -444,13 +518,21 @@ textarea {
 .sync-chip {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  min-width: 112px;
+  width: 112px;
+  height: 28px;
+  box-sizing: border-box;
   white-space: nowrap;
   border-radius: 999px;
   background: #e6f4f0;
   color: #164f45;
-  padding: 4px 8px;
+  padding: 0 10px;
   font-size: 12px;
+  line-height: 1;
   font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .sync-chip.offline_pending {
@@ -907,18 +989,24 @@ textarea {
 .radio-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 6px;
 }
 
 .radio-row label {
-  min-height: 46px;
+  min-height: 38px;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 8px 12px;
+  padding: 5px 9px;
   background: #fff;
+  line-height: 1.25;
+  white-space: normal;
+}
+
+.radio-row input {
+  flex: 0 0 auto;
 }
 
 .date-row {
@@ -964,12 +1052,14 @@ textarea {
 }
 
 .segment-row button {
-  min-height: 36px;
-  min-width: 42px;
-  padding: 6px 10px;
+  min-height: 34px;
+  min-width: 38px;
+  padding: 5px 9px;
   border: 0;
   border-radius: 6px;
   background: transparent;
+  line-height: 1.2;
+  white-space: normal;
 }
 
 .segment-row button.selected {
@@ -1668,7 +1758,7 @@ textarea {
 
 .paper-birthdate span {
   display: inline-block;
-  margin-right: 0.9em;
+  margin-right: 0.55em;
 }
 
 .paper-birthdate span:last-child {
@@ -1681,8 +1771,9 @@ textarea {
 
 .paper-birthdate {
   font-weight: 700;
-  white-space: nowrap;
+  white-space: normal;
   line-height: 1.18;
+  overflow-wrap: anywhere;
 }
 
 .paper-birthdate-death {
@@ -2123,7 +2214,10 @@ textarea {
 
   .admin-filters,
   .admin-summary,
-  .admin-detail-grid {
+  .admin-detail-grid,
+  .user-admin-grid,
+  .user-admin-list-header,
+  .two-column-fields {
     grid-template-columns: 1fr;
   }
 
