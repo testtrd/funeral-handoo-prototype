@@ -90,6 +90,27 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function normalizeBranchIdSeed(name: string) {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 32);
+}
+
+function createBranchId(name: string, existingIds: string[]) {
+  const existing = new Set(existingIds);
+  const base = normalizeBranchIdSeed(name) || `branch_${Date.now().toString(36)}`;
+  let candidate = base;
+  let index = 2;
+  while (existing.has(candidate)) {
+    candidate = `${base}_${index}`;
+    index += 1;
+  }
+  return candidate;
+}
+
 function splitOptions(value: string) {
   return value.split(/\r?\n|,/).map((item) => item.trim()).filter(Boolean);
 }
@@ -276,7 +297,8 @@ export function getVendorMap(): Record<string, VendorConfig> {
 export function saveBranch(branch: ManagedBranch) {
   const data = getMasterData();
   const now = nowIso();
-  const item = { ...branch, updatedAt: now, createdAt: branch.createdAt || now };
+  const id = branch.id || createBranchId(branch.name, data.branches.map((item) => item.id));
+  const item = { ...branch, id, updatedAt: now, createdAt: branch.createdAt || now };
   data.branches = data.branches.some((value) => value.id === item.id)
     ? data.branches.map((value) => value.id === item.id ? item : value)
     : [...data.branches, item];

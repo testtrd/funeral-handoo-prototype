@@ -218,7 +218,7 @@ export default function MasterAdmin({ section = "overview" }: { section?: Master
   }
 
   function submitBranch() {
-    if (!branchForm.id || !branchForm.name) return alert("拠点IDと拠点名を入力してください。");
+    if (!branchForm.name) return alert("拠点名を入力してください。");
     saveBranch(branchForm);
     setBranchForm(emptyBranch());
     reload();
@@ -349,10 +349,10 @@ export default function MasterAdmin({ section = "overview" }: { section?: Master
           <article className="master-panel">
             <h2>拠点一覧</h2>
             <table className="admin-table compact">
-              <thead><tr><th>拠点ID</th><th>拠点名</th><th>状態</th><th>業者数</th><th></th></tr></thead>
+              <thead><tr><th>拠点名</th><th>状態</th><th>業者数</th><th></th></tr></thead>
               <tbody>{master.branches.map((branch) => (
                 <tr key={branch.id}>
-                  <td>{branch.id}</td><td>{branch.name}</td><td>{branch.enabled ? "有効" : "無効"}</td><td>{branch.vendorIds.length}</td>
+                  <td>{branch.name}</td><td>{branch.enabled ? "有効" : "無効"}</td><td>{branch.vendorIds.length}</td>
                   <td><button onClick={() => setBranchForm(branch)}>編集</button><button onClick={() => { deleteBranch(branch.id); reload(); }}>削除</button></td>
                 </tr>
               ))}</tbody>
@@ -361,7 +361,6 @@ export default function MasterAdmin({ section = "overview" }: { section?: Master
           <article className="master-panel">
             <h2>拠点を追加・編集</h2>
             <div className="master-form">
-              <TextField label="拠点ID" value={branchForm.id} onChange={(id) => setBranchForm({ ...branchForm, id })} placeholder="例：head_office" />
               <TextField label="拠点名" value={branchForm.name} onChange={(name) => setBranchForm({ ...branchForm, name })} placeholder="例：本社" />
               <BoolField label="有効" checked={branchForm.enabled} onChange={(enabled) => setBranchForm({ ...branchForm, enabled })} />
               <button className="primary" onClick={submitBranch}><Save size={18} /> 保存</button>
