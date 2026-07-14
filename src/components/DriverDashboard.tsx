@@ -42,8 +42,14 @@ function isAssignedToUser(record: HandoffRecord, user: AuthSession) {
   return record.createdBy?.userId === user.userId || record.assignedDriver?.userId === user.userId;
 }
 
+function userBranchIds(user: AuthSession) {
+  if (Array.isArray(user.branchIds) && user.branchIds.length) return user.branchIds.filter(Boolean);
+  return user.branchId ? [user.branchId] : [];
+}
+
 function isInUserBranch(record: HandoffRecord, user: AuthSession) {
-  return Boolean(user.branchId && record.branchId === user.branchId);
+  const branchIds = userBranchIds(user);
+  return branchIds.includes(record.branchId);
 }
 
 function canOperateRecord(record: HandoffRecord, user: AuthSession) {
@@ -76,8 +82,9 @@ export default function DriverDashboard() {
   const visibleRecords = useMemo(() => {
     if (!user) return [];
     if (user.role === "admin") return records;
-    if (user.branchId) {
-      return records.filter((record) => record.branchId === user.branchId);
+    const branchIds = userBranchIds(user);
+    if (branchIds.length) {
+      return records.filter((record) => branchIds.includes(record.branchId));
     }
     return records.filter((record) => isAssignedToUser(record, user));
   }, [records, user]);

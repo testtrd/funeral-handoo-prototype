@@ -10,12 +10,18 @@ import type { CreateUserAccountInput, UpdateUserAccountInput, UserAccount, UserA
 
 function normalizeUserAccount(raw: Partial<UserAccount> & { uid?: string; id?: string }): UserAccount {
   const now = new Date().toISOString();
+  const branchIds = Array.isArray(raw.branchIds)
+    ? raw.branchIds.filter((value): value is string => typeof value === "string" && Boolean(value))
+    : raw.branchId
+      ? [raw.branchId]
+      : [];
   return {
     uid: raw.uid || raw.id || "",
     name: raw.name || "",
     email: (raw.email || "").toLowerCase(),
     department: raw.department || "",
-    branchId: raw.branchId || "",
+    branchId: raw.branchId || branchIds[0] || "",
+    branchIds,
     role: raw.role === "admin" || raw.role === "office" || raw.role === "driver" ? raw.role : "driver",
     status: raw.status === "inactive" ? "inactive" : "active",
     notes: raw.notes || "",

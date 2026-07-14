@@ -8,6 +8,7 @@ export type UserAccount = {
   email: string;
   department?: string;
   branchId?: string;
+  branchIds?: string[];
   role: AuthRole;
   status: UserAccountStatus;
   notes?: string;
@@ -22,6 +23,7 @@ export type CreateUserAccountInput = {
   confirmPassword: string;
   department?: string;
   branchId?: string;
+  branchIds?: string[];
   role: AuthRole;
   notes?: string;
 };
@@ -30,6 +32,7 @@ export type UpdateUserAccountInput = {
   name: string;
   department?: string;
   branchId?: string;
+  branchIds?: string[];
   role: AuthRole;
   notes?: string;
 };

@@ -68,6 +68,12 @@ function isRelatedToUser(record: HandoffRecord, userId: string) {
   return record.createdBy?.userId === userId || record.assignedDriver?.userId === userId;
 }
 
+function userBranchIds(user: ReturnType<typeof getCurrentUser>) {
+  if (!user) return [];
+  if (Array.isArray(user.branchIds) && user.branchIds.length) return user.branchIds.filter(Boolean);
+  return user.branchId ? [user.branchId] : [];
+}
+
 function getVendorHandoffNoteOptions(data: HandoffData) {
   const vendor = getVendorMap()[data.vendorId];
   const options = vendor?.vendorHandoffNoteOptions?.length ? vendor.vendorHandoffNoteOptions : defaultVendorHandoffNoteOptions;
@@ -125,8 +131,9 @@ export default function AdminDashboard() {
       setRecords(allRecords);
       return;
     }
+    const branchIds = userBranchIds(current);
     setRecords(allRecords.filter((record) => (
-      current.branchId ? record.branchId === current.branchId : isRelatedToUser(record, current.userId)
+      branchIds.length ? branchIds.includes(record.branchId) : isRelatedToUser(record, current.userId)
     )));
   }
 

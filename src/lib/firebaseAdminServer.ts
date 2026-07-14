@@ -41,15 +41,24 @@ function statusFromValue(value: unknown): UserAccountStatus {
   return value === "inactive" ? "inactive" : "active";
 }
 
+function stringArrayFromValue(value: unknown) {
+  return Array.isArray(value)
+    ? value.map((item) => String(item || "").trim()).filter(Boolean)
+    : [];
+}
+
 function userFromDoc(doc: FirestoreDoc): UserAccount {
   const data = doc.data() || {};
   const now = new Date().toISOString();
+  const branchIds = stringArrayFromValue(data.branchIds);
+  const branchId = String(data.branchId || branchIds[0] || "");
   return {
     uid: String(data.uid || doc.id),
     name: String(data.name || ""),
     email: String(data.email || "").toLowerCase(),
     department: String(data.department || ""),
-    branchId: String(data.branchId || ""),
+    branchId,
+    branchIds: branchIds.length ? branchIds : branchId ? [branchId] : [],
     role: roleFromValue(data.role),
     status: statusFromValue(data.status),
     notes: String(data.notes || ""),
@@ -70,13 +79,17 @@ function validateCreateInput(input: CreateUserAccountInput) {
   if (password.length < 6) throw new Error("初期パスワードは6文字以上で入力してください。");
   if (password !== confirmPassword) throw new Error("初期パスワードと確認用パスワードが一致しません。");
 
+  const branchIds = stringArrayFromValue(input.branchIds);
+  const branchId = input.branchId?.trim() || branchIds[0] || "";
+
   return {
     name,
     email,
     password,
     role: roleFromValue(input.role),
     department: input.department?.trim() || "",
-    branchId: input.branchId?.trim() || "",
+    branchId,
+    branchIds: branchIds.length ? branchIds : branchId ? [branchId] : [],
     notes: input.notes?.trim() || ""
   };
 }
@@ -85,11 +98,15 @@ function validateUpdateInput(input: UpdateUserAccountInput) {
   const name = input.name.trim();
   if (!name) throw new Error("氏名を入力してください。");
 
+  const branchIds = stringArrayFromValue(input.branchIds);
+  const branchId = input.branchId?.trim() || branchIds[0] || "";
+
   return {
     name,
     role: roleFromValue(input.role),
     department: input.department?.trim() || "",
-    branchId: input.branchId?.trim() || "",
+    branchId,
+    branchIds: branchIds.length ? branchIds : branchId ? [branchId] : [],
     notes: input.notes?.trim() || ""
   };
 }
@@ -248,6 +265,7 @@ export async function createEmployeeAccount(request: Request, input: CreateUserA
       email: normalized.email,
       department: normalized.department,
       branchId: normalized.branchId,
+      branchIds: normalized.branchIds,
       role: normalized.role,
       status: "active",
       notes: normalized.notes,
@@ -307,6 +325,7 @@ export async function updateEmployeeAccount(request: Request, uid: string, input
       name: normalized.name,
       department: normalized.department,
       branchId: normalized.branchId,
+      branchIds: normalized.branchIds,
       role: normalized.role,
       notes: normalized.notes,
       status,

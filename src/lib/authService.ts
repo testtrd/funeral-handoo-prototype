@@ -16,6 +16,7 @@ export type AuthUser = {
   name: string;
   role: AuthRole;
   branchId?: string;
+  branchIds?: string[];
   email?: string;
 };
 
@@ -79,7 +80,8 @@ async function readOrBootstrapUserProfile(uid: string, email: string, fallbackNa
       email,
       role: defaultRole,
       status: "active",
-      branchId: ""
+      branchId: "",
+      branchIds: []
     };
   }
 
@@ -93,6 +95,7 @@ async function readOrBootstrapUserProfile(uid: string, email: string, fallbackNa
       role: defaultRole,
       status: "active",
       branchId: "",
+      branchIds: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -111,6 +114,7 @@ async function readOrBootstrapUserProfile(uid: string, email: string, fallbackNa
     role?: unknown;
     status?: string;
     branchId?: string;
+    branchIds?: unknown;
   };
 }
 
@@ -122,6 +126,7 @@ function prototypeLogin(userId: string, password: string): AuthSession | null {
     name: user.name,
     role: user.role,
     branchId: user.branchId,
+    branchIds: user.branchIds || (user.branchId ? [user.branchId] : []),
     loggedInAt: new Date().toISOString()
   };
   window.localStorage.setItem(authSessionKey, JSON.stringify(session));
@@ -151,12 +156,18 @@ export async function login(userId: string, password: string): Promise<{ session
     }
 
     const role = isValidRole(profile.role) ? profile.role : "driver";
+    const branchIds = Array.isArray(profile.branchIds)
+      ? profile.branchIds.map((value) => String(value || "").trim()).filter(Boolean)
+      : profile.branchId
+        ? [String(profile.branchId)]
+        : [];
     const session: AuthSession = {
       userId: credential.user.uid,
       name: profile.name || credential.user.displayName || profile.email || email,
       email: profile.email || email,
       role,
-      branchId: profile.branchId || "",
+      branchId: profile.branchId || branchIds[0] || "",
+      branchIds,
       loggedInAt: new Date().toISOString()
     };
     window.localStorage.setItem(authSessionKey, JSON.stringify(session));

@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { AuthStatus } from "@/components/AuthGate";
+import { getAllBranches } from "@/lib/masterDataService";
 import {
   createUserAccount,
   getUserAccounts,
@@ -19,6 +20,7 @@ const emptyForm: CreateUserAccountInput = {
   confirmPassword: "",
   department: "",
   branchId: "",
+  branchIds: [],
   role: "driver",
   notes: ""
 };
@@ -49,6 +51,30 @@ export default function UserAdmin({ embedded = false }: { embedded?: boolean }) 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const branches = useMemo(() => getAllBranches(), []);
+  const enabledBranches = useMemo(() => branches.filter((branch) => branch.enabled), [branches]);
+
+  function branchIdsFromValue(value: Pick<UserAccount, "branchId" | "branchIds"> | Pick<CreateUserAccountInput, "branchId" | "branchIds">) {
+    if (Array.isArray(value.branchIds) && value.branchIds.length) return value.branchIds.filter(Boolean);
+    return value.branchId ? [value.branchId] : [];
+  }
+
+  function branchNameText(branchIds: string[]) {
+    return branchIds
+      .map((branchId) => branches.find((branch) => branch.id === branchId)?.name || branchId)
+      .filter(Boolean)
+      .join("、");
+  }
+
+  function updateFormBranchIds(branchIds: string[]) {
+    const uniqueBranchIds = Array.from(new Set(branchIds.filter(Boolean)));
+    setForm((current) => ({
+      ...current,
+      branchIds: uniqueBranchIds,
+      branchId: uniqueBranchIds[0] || "",
+      department: branchNameText(uniqueBranchIds)
+    }));
+  }
 
   async function loadUsers() {
     setLoading(true);
@@ -71,13 +97,15 @@ export default function UserAdmin({ embedded = false }: { embedded?: boolean }) 
     const keyword = search.trim().toLowerCase();
     if (!keyword) return users;
     return users.filter((user) => {
+      const branchText = branchNameText(branchIdsFromValue(user));
       return (
         user.name.toLowerCase().includes(keyword) ||
         user.email.toLowerCase().includes(keyword) ||
-        (user.department || "").toLowerCase().includes(keyword)
+        (user.department || "").toLowerCase().includes(keyword) ||
+        branchText.toLowerCase().includes(keyword)
       );
     });
-  }, [search, users]);
+  }, [branches, search, users]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -86,18 +114,26 @@ export default function UserAdmin({ embedded = false }: { embedded?: boolean }) 
     setError("");
 
     try {
+      const selectedBranchIds = branchIdsFromValue(form);
+      const department = branchNameText(selectedBranchIds);
       if (editingUid) {
         const updated = await updateUserAccount(editingUid, {
           name: form.name,
-          department: form.department,
-          branchId: form.branchId,
+          department,
+          branchId: selectedBranchIds[0] || "",
+          branchIds: selectedBranchIds,
           role: form.role,
           notes: form.notes
         });
         setUsers((current) => current.map((user) => (user.uid === updated.uid ? updated : user)));
         setMessage("社員情報を更新しました。");
       } else {
-        const created = await createUserAccount(form);
+        const created = await createUserAccount({
+          ...form,
+          department,
+          branchId: selectedBranchIds[0] || "",
+          branchIds: selectedBranchIds
+        });
         setUsers((current) => [created, ...current.filter((user) => user.uid !== created.uid)]);
         setMessage("社員アカウントを登録しました。");
       }
@@ -112,6 +148,7 @@ export default function UserAdmin({ embedded = false }: { embedded?: boolean }) 
   }
 
   function startEdit(user: UserAccount) {
+    const branchIds = branchIdsFromValue(user);
     setEditingUid(user.uid);
     setMessage("");
     setError("");
@@ -120,8 +157,9 @@ export default function UserAdmin({ embedded = false }: { embedded?: boolean }) 
       email: user.email,
       password: "",
       confirmPassword: "",
-      department: user.department || "",
-      branchId: user.branchId || "",
+      department: branchNameText(branchIds) || user.department || "",
+      branchId: branchIds[0] || "",
+      branchIds,
       role: user.role,
       notes: user.notes || ""
     });
@@ -170,7 +208,7 @@ export default function UserAdmin({ embedded = false }: { embedded?: boolean }) 
       {!embedded ? (
         <header className="admin-header">
           <div>
-            <p className="eyebrow">管理者設定</p>
+            <p className="eyebrow">管理設定</p>
             <h1>社員管理</h1>
             <p className="small">LINE WORKSメールアドレスをログインIDとして使用します。</p>
           </div>
@@ -229,10 +267,32 @@ export default function UserAdmin({ embedded = false }: { embedded?: boolean }) 
             </>
           )}
           <div className="two-column-fields">
-            <label>
-              所属
-              <input value={form.department} onChange={(event) => setForm({ ...form, department: event.target.value })} />
-            </label>
+            <fieldset className="master-field">
+              <legend>所属（拠点）</legend>
+              <div className="master-check-grid">
+                {enabledBranches.map((branch) => {
+                  const selectedBranchIds = branchIdsFromValue(form);
+                  const checked = selectedBranchIds.includes(branch.id);
+                  return (
+                    <label className="master-check" key={branch.id}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(event) => {
+                          updateFormBranchIds(
+                            event.target.checked
+                              ? [...selectedBranchIds, branch.id]
+                              : selectedBranchIds.filter((branchId) => branchId !== branch.id)
+                          );
+                        }}
+                      />
+                      {branch.name}
+                    </label>
+                  );
+                })}
+              </div>
+              <p className="small">複数拠点を兼任する場合は、複数選択できます。</p>
+            </fieldset>
             <label>
               権限
               <select value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value as AuthRole })}>
@@ -277,7 +337,7 @@ export default function UserAdmin({ embedded = false }: { embedded?: boolean }) 
                 <tr>
                   <th>氏名</th>
                   <th>LINE WORKSメール</th>
-                  <th>所属</th>
+                  <th>所属（拠点）</th>
                   <th>権限</th>
                   <th>状態</th>
                   <th>登録日</th>
@@ -290,7 +350,7 @@ export default function UserAdmin({ embedded = false }: { embedded?: boolean }) 
                     <tr key={user.uid}>
                       <td>{user.name}</td>
                       <td>{user.email}</td>
-                      <td>{user.department || "-"}</td>
+                      <td>{branchNameText(branchIdsFromValue(user)) || user.department || "-"}</td>
                       <td>{roleLabel(user.role)}</td>
                       <td>
                         <span className="status-chip">{statusLabel(user.status)}</span>
