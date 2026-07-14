@@ -39,7 +39,7 @@ function formatDate(value: string) {
   return date.toLocaleDateString("ja-JP");
 }
 
-export default function UserAdmin() {
+export default function UserAdmin({ embedded = false }: { embedded?: boolean }) {
   const [users, setUsers] = useState<UserAccount[]>([]);
   const [form, setForm] = useState<CreateUserAccountInput>(emptyForm);
   const [search, setSearch] = useState("");
@@ -124,8 +124,11 @@ export default function UserAdmin() {
     }
   }
 
+  const Shell = embedded ? "section" : "main";
+
   return (
-    <main className="admin-shell">
+    <Shell className={embedded ? "master-panel user-admin-embedded" : "admin-shell"}>
+      {!embedded ? (
       <header className="admin-header">
         <div>
           <p className="eyebrow">管理者設定</p>
@@ -142,6 +145,7 @@ export default function UserAdmin() {
           </a>
         </div>
       </header>
+      ) : null}
 
       <section className="user-admin-grid">
         <form className="user-admin-form" onSubmit={submit}>
@@ -268,6 +272,6 @@ export default function UserAdmin() {
           </div>
         </section>
       </section>
-    </main>
+    </Shell>
   );
 }

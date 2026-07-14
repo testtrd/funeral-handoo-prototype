@@ -3,6 +3,7 @@
 import { Download, Plus, RefreshCw, RotateCcw, Save, Upload } from "lucide-react";
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { AuthStatus } from "@/components/AuthGate";
+import UserAdmin from "@/components/UserAdmin";
 import {
   buildDefaultMasterData,
   deleteBranch,
@@ -25,20 +26,22 @@ import {
   type VendorRule
 } from "@/lib/masterDataService";
 
-type MasterSection = "overview" | "branches" | "vendors" | "rules" | "questions";
+type MasterSection = "overview" | "branches" | "vendors" | "rules" | "questions" | "users";
 
 const sectionLabels: Record<MasterSection, string> = {
   overview: "概要",
   branches: "拠点",
   vendors: "業者",
   rules: "業者ルール",
-  questions: "追加質問"
+  questions: "追加質問",
+  users: "社員管理"
 };
 
 const sectionLinks: Array<[MasterSection, string]> = [
   ["overview", "/admin/master"],
   ["branches", "/admin/master/branches"],
-  ["vendors", "/admin/master/vendors"]
+  ["vendors", "/admin/master/vendors"],
+  ["users", "/admin/master/users"]
 ];
 
 function nowIso() {
@@ -367,6 +370,8 @@ export default function MasterAdmin({ section = "overview" }: { section?: Master
           </article>
         </section>
       ) : null}
+
+      {section === "users" ? <UserAdmin embedded /> : null}
 
       {section === "vendors" ? (
         <section className="master-layout">
