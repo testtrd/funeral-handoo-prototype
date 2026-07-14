@@ -28,7 +28,7 @@ const authSessionKey = "funeral-handoff-auth-session-v1";
 const prototypeUsers: Array<AuthUser & { password: string }> = [
   { userId: "admin", name: "管理者", password: "admin-pass", role: "admin" },
   { userId: "driver01", name: "ドライバー01", password: "driver-pass", role: "driver", branchId: "head_office" },
-  { userId: "office01", name: "事務所担当01", password: "office-pass", role: "office", branchId: "head_office" }
+  { userId: "office01", name: "企画部01", password: "office-pass", role: "office", branchId: "head_office" }
 ];
 
 export function getPrototypeUsers(): AuthUser[] {

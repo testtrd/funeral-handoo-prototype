@@ -24,8 +24,8 @@ const emptyForm: CreateUserAccountInput = {
 
 function roleLabel(role: AuthRole) {
   if (role === "admin") return "管理者";
-  if (role === "office") return "事務所";
-  return "現場";
+  if (role === "office") return "企画部";
+  return "ドライバー";
 }
 
 function statusLabel(status: UserAccount["status"]) {
@@ -187,8 +187,8 @@ export default function UserAdmin() {
             <label>
               権限
               <select value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value as AuthRole })}>
-                <option value="driver">現場</option>
-                <option value="office">事務所</option>
+                <option value="driver">ドライバー</option>
+                <option value="office">企画部</option>
                 <option value="admin">管理者</option>
               </select>
             </label>
