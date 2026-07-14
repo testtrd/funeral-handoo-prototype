@@ -85,7 +85,7 @@ export async function requireAdminUser(request: Request) {
   if (decodedIsAdmin(decoded)) {
     const email = normalizeEmail(decoded.email || "");
     if (email && adminEmails().includes(email)) {
-      await auth.setCustomUserClaims(decoded.uid, { role: "admin", status: "active" }).catch((error) => {
+      await auth.setCustomUserClaims(decoded.uid, { role: "admin", status: "active" }).catch((error: unknown) => {
         console.warn("[Firebase Admin] Initial admin custom claim could not be refreshed.", error);
       });
     }
