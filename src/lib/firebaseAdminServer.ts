@@ -19,6 +19,9 @@ type DecodedToken = {
   admin?: boolean;
 };
 
+type AdminDb = ReturnType<typeof getFirebaseAdmin>["db"];
+type AdminAuth = ReturnType<typeof getFirebaseAdmin>["auth"];
+
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
@@ -86,17 +89,52 @@ function profileIsAdmin(profile: Record<string, unknown> | undefined) {
   return profile?.role === "admin" && profile.status !== "inactive";
 }
 
-async function refreshAdminClaims(
-  auth: ReturnType<typeof getFirebaseAdmin>["auth"],
-  uid: string,
-  reason: "initial-email" | "firestore-profile"
-) {
+function safeSuffix(value: string) {
+  return value ? value.slice(-6) : "";
+}
+
+async function refreshAdminClaims(auth: AdminAuth, uid: string, reason: "initial-email" | "firestore-profile") {
   await auth.setCustomUserClaims(uid, { role: "admin", status: "active" }).catch((error: unknown) => {
-    console.warn("[Firebase Admin] Admin custom claim could not be refreshed.", {
-      reason,
-      error
-    });
+    console.warn("[Firebase Admin] Admin custom claim could not be refreshed.", { reason, error });
   });
+}
+
+async function findUserProfile(db: AdminDb, uid: string, email: string) {
+  const users = db.collection("users");
+  const uidSnapshot = await users.doc(uid).get().catch((error: unknown) => {
+    console.warn("[Firebase Admin] Failed to read user profile by uid.", { uidSuffix: safeSuffix(uid), error });
+    return null;
+  });
+
+  if (uidSnapshot?.exists) {
+    return {
+      source: "uid" as const,
+      docId: uidSnapshot.id,
+      snapshot: uidSnapshot,
+      profile: uidSnapshot.data()
+    };
+  }
+
+  if (!email) {
+    return {
+      source: "none" as const,
+      docId: "",
+      snapshot: uidSnapshot,
+      profile: undefined
+    };
+  }
+
+  const emailQuery = await users.where("email", "==", email).limit(1).get().catch((error: unknown) => {
+    console.warn("[Firebase Admin] Failed to read user profile by email.", { emailPresent: Boolean(email), error });
+    return null;
+  });
+  const emailDoc = emailQuery?.docs?.[0];
+  return {
+    source: emailDoc ? ("email" as const) : ("none" as const),
+    docId: emailDoc?.id || "",
+    snapshot: emailDoc || uidSnapshot,
+    profile: emailDoc?.data()
+  };
 }
 
 export async function requireAdminUser(request: Request) {
@@ -107,23 +145,26 @@ export async function requireAdminUser(request: Request) {
   const { auth, db } = getFirebaseAdmin();
   const decoded = await auth.verifyIdToken(token) as DecodedToken;
   const email = normalizeEmail(decoded.email || "");
-  const initialAdmin = Boolean(email && adminEmails().includes(email));
-
-  const userRef = db.collection("users").doc(decoded.uid);
-  const profileSnapshot = await userRef.get().catch((error: unknown) => {
-    console.warn("[Firebase Admin] Failed to read current user profile for admin check.", { error });
-    return null;
-  });
-  const profile = profileSnapshot?.data();
+  const configuredAdminEmails = adminEmails();
+  const initialAdmin = Boolean(email && configuredAdminEmails.includes(email));
+  const profileResult = await findUserProfile(db, decoded.uid, email);
+  const profile = profileResult.profile;
   const customClaimAdmin = claimsAreAdmin(decoded);
   const firestoreProfileAdmin = profileIsAdmin(profile);
+  const uidDocMatched = profileResult.source === "uid";
+  const emailDocMatched = profileResult.source === "email";
 
   console.log("[Firebase Admin] admin check", {
     uidPresent: Boolean(decoded.uid),
+    uidSuffix: safeSuffix(decoded.uid),
+    profileDocIdSuffix: safeSuffix(profileResult.docId),
+    uidDocMatched,
     emailPresent: Boolean(email),
+    initialAdminEmailCount: configuredAdminEmails.length,
     initialAdmin,
     customClaimAdmin,
     firestoreProfileAdmin,
+    emailDocMatched,
     claimRole: decoded.role || "",
     claimStatus: decoded.status || "",
     profileRole: String(profile?.role || ""),
@@ -131,13 +172,22 @@ export async function requireAdminUser(request: Request) {
   });
 
   if (initialAdmin || customClaimAdmin || firestoreProfileAdmin) {
-    if (initialAdmin && (!profileSnapshot?.exists || profile?.role !== "admin" || profile?.status === "inactive")) {
-      const now = new Date().toISOString();
-      await userRef.set(
+    const now = new Date().toISOString();
+    const canonicalRef = db.collection("users").doc(decoded.uid);
+    const shouldRefreshProfile =
+      initialAdmin ||
+      firestoreProfileAdmin ||
+      !profile ||
+      profileResult.docId !== decoded.uid ||
+      profile.role !== "admin" ||
+      profile.status === "inactive";
+
+    if (shouldRefreshProfile) {
+      await canonicalRef.set(
         {
           uid: decoded.uid,
           name: String(profile?.name || decoded.name || email || "管理者"),
-          email,
+          email: email || String(profile?.email || ""),
           role: "admin",
           status: "active",
           updatedAt: now,
@@ -145,7 +195,7 @@ export async function requireAdminUser(request: Request) {
         },
         { merge: true }
       ).catch((error: unknown) => {
-        console.warn("[Firebase Admin] Initial admin profile could not be refreshed.", { error });
+        console.warn("[Firebase Admin] Admin profile could not be refreshed.", { uidSuffix: safeSuffix(decoded.uid), error });
       });
     }
 
