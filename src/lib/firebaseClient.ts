@@ -3,7 +3,6 @@ import {
   getAuth,
   onAuthStateChanged,
   sendPasswordResetEmail,
-  signInAnonymously,
   signInWithEmailAndPassword,
   signOut,
   type Auth,
@@ -33,15 +32,28 @@ function normalizeFirebaseEnvValue(value: string | undefined) {
     .trim();
 }
 
+function publicEnv(primary: string | undefined, viteAlias: string | undefined) {
+  return normalizeFirebaseEnvValue(primary || viteAlias);
+}
+
 function rawFirebaseConfig(): FirebaseOptions {
   return {
-    apiKey: normalizeFirebaseEnvValue(process.env.NEXT_PUBLIC_FIREBASE_API_KEY),
-    authDomain: normalizeFirebaseEnvValue(process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN),
-    projectId: normalizeFirebaseEnvValue(process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID),
-    storageBucket: normalizeFirebaseEnvValue(process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET),
-    messagingSenderId: normalizeFirebaseEnvValue(process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID),
-    appId: normalizeFirebaseEnvValue(process.env.NEXT_PUBLIC_FIREBASE_APP_ID),
-    measurementId: normalizeFirebaseEnvValue(process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID)
+    apiKey: publicEnv(process.env.NEXT_PUBLIC_FIREBASE_API_KEY, process.env.VITE_FIREBASE_API_KEY),
+    authDomain: publicEnv(process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN, process.env.VITE_FIREBASE_AUTH_DOMAIN),
+    projectId: publicEnv(process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID, process.env.VITE_FIREBASE_PROJECT_ID),
+    storageBucket: publicEnv(
+      process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+      process.env.VITE_FIREBASE_STORAGE_BUCKET
+    ),
+    messagingSenderId: publicEnv(
+      process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+      process.env.VITE_FIREBASE_MESSAGING_SENDER_ID
+    ),
+    appId: publicEnv(process.env.NEXT_PUBLIC_FIREBASE_APP_ID, process.env.VITE_FIREBASE_APP_ID),
+    measurementId: publicEnv(
+      process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
+      process.env.VITE_FIREBASE_MEASUREMENT_ID
+    )
   };
 }
 
@@ -50,15 +62,38 @@ function firebaseConfig(): FirebaseOptions | null {
   return config.apiKey && config.authDomain && config.projectId && config.appId ? config : null;
 }
 
+async function waitForAuthReady(auth: Auth) {
+  const authWithReady = auth as Auth & { authStateReady?: () => Promise<void> };
+  if (authWithReady.authStateReady) {
+    await authWithReady.authStateReady();
+    return;
+  }
+
+  if (auth.currentUser) return;
+
+  await new Promise<void>((resolve) => {
+    let unsubscribe: () => void = () => undefined;
+    const timer = window.setTimeout(() => {
+      unsubscribe();
+      resolve();
+    }, 3000);
+    unsubscribe = onAuthStateChanged(auth, () => {
+      window.clearTimeout(timer);
+      unsubscribe();
+      resolve();
+    });
+  });
+}
+
 export function getFirebaseDebugInfo() {
   const config: FirebaseOptions = {
     ...rawFirebaseConfig()
   };
   const missing = [
-    !config.apiKey ? "NEXT_PUBLIC_FIREBASE_API_KEY" : "",
-    !config.authDomain ? "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN" : "",
-    !config.projectId ? "NEXT_PUBLIC_FIREBASE_PROJECT_ID" : "",
-    !config.appId ? "NEXT_PUBLIC_FIREBASE_APP_ID" : ""
+    !config.apiKey ? "NEXT_PUBLIC_FIREBASE_API_KEY or VITE_FIREBASE_API_KEY" : "",
+    !config.authDomain ? "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN or VITE_FIREBASE_AUTH_DOMAIN" : "",
+    !config.projectId ? "NEXT_PUBLIC_FIREBASE_PROJECT_ID or VITE_FIREBASE_PROJECT_ID" : "",
+    !config.appId ? "NEXT_PUBLIC_FIREBASE_APP_ID or VITE_FIREBASE_APP_ID" : ""
   ].filter(Boolean);
   return {
     configured: missing.length === 0,
@@ -109,6 +144,11 @@ export function getFirebaseAuth() {
 export async function signInWithEmailPassword(email: string, password: string) {
   const auth = getFirebaseAuth();
   if (!auth) throw new Error("Firebase設定が未登録です。");
+
+  if (auth.currentUser?.isAnonymous) {
+    await signOut(auth);
+  }
+
   return signInWithEmailAndPassword(auth, email, password);
 }
 
@@ -127,55 +167,49 @@ export async function signOutFirebase() {
 export async function getFirebaseCurrentUserIdToken() {
   const auth = getFirebaseAuth();
   if (!auth) return "";
-  const authWithReady = auth as Auth & { authStateReady?: () => Promise<void> };
-  if (authWithReady.authStateReady) {
-    await authWithReady.authStateReady();
-  } else if (!auth.currentUser) {
-    await new Promise<void>((resolve) => {
-      let unsubscribe: () => void = () => undefined;
-      const timer = setTimeout(() => {
-        unsubscribe();
-        resolve();
-      }, 3000);
-      unsubscribe = onAuthStateChanged(auth, () => {
-        clearTimeout(timer);
-        unsubscribe();
-        resolve();
-      });
-    });
-  }
-  if (!auth.currentUser) {
+  await waitForAuthReady(auth);
+
+  const user = auth.currentUser;
+  if (!user) {
     console.warn("[Firebase Auth] Current user is not available when requesting ID token.", getFirebaseDebugInfo());
     return "";
   }
-  return auth.currentUser.getIdToken();
+
+  console.info("[Firebase Auth] Current user before protected API call.", {
+    uidSuffix: user.uid.slice(-6),
+    email: user.email || "",
+    isAnonymous: user.isAnonymous
+  });
+
+  if (user.isAnonymous || !user.email) {
+    await signOut(auth).catch(() => undefined);
+    throw new Error("メールログイン状態を確認できません。もう一度ログインしてください。");
+  }
+
+  return user.getIdToken(true);
 }
 
 export async function ensureFirebaseAuthSession(): Promise<User | null> {
   const auth = getFirebaseAuth();
   if (!auth) return null;
-  if (auth.currentUser) return auth.currentUser;
+  await waitForAuthReady(auth);
 
-  try {
-    const credential = await signInAnonymously(auth);
-    console.info("[Firebase Auth] Anonymous sign-in succeeded.", { uid: credential.user.uid });
-    return credential.user;
-  } catch (error) {
-    const firebaseError = error as { code?: string; message?: string };
-    const message = firebaseError.code && firebaseError.message
-      ? `${firebaseError.code}: ${firebaseError.message}`
-      : firebaseError.message || "Firebase Authenticationの匿名ログインに失敗しました。";
-    console.warn(
-      "[Firebase Auth] Anonymous sign-in failed. If Firestore rules require authentication, cloud sync will fail.",
-      {
-        code: firebaseError.code,
-        message: firebaseError.message,
-        debug: getFirebaseDebugInfo(),
-        error
-      }
-    );
-    throw new Error(message);
+  const user = auth.currentUser;
+  if (!user) {
+    throw new Error("クラウド同期にはメールログインが必要です。");
   }
+
+  if (user.isAnonymous || !user.email) {
+    console.warn("[Firebase Auth] Anonymous or email-less user detected. Signing out.", {
+      uidSuffix: user.uid.slice(-6),
+      isAnonymous: user.isAnonymous,
+      emailPresent: Boolean(user.email)
+    });
+    await signOut(auth).catch(() => undefined);
+    throw new Error("匿名ログインでは同期できません。メールアドレスでログインしてください。");
+  }
+
+  return user;
 }
 
 export function getFirebaseDb() {

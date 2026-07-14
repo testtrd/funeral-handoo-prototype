@@ -1,6 +1,11 @@
 "use client";
 
-import { getFirebaseCurrentUserIdToken, sendFirebasePasswordReset } from "@/lib/firebaseClient";
+import {
+  getFirebaseAuth,
+  getFirebaseCurrentUserIdToken,
+  sendFirebasePasswordReset,
+  signOutFirebase
+} from "@/lib/firebaseClient";
 import type { CreateUserAccountInput, UserAccount, UserAccountStatus } from "@/lib/userAccountTypes";
 
 function normalizeUserAccount(raw: Partial<UserAccount> & { uid?: string; id?: string }): UserAccount {
@@ -20,6 +25,19 @@ function normalizeUserAccount(raw: Partial<UserAccount> & { uid?: string; id?: s
 }
 
 async function authHeaders() {
+  const auth = getFirebaseAuth();
+  const user = auth?.currentUser || null;
+  console.info("[UserAdmin] Firebase user before admin API call.", {
+    uidSuffix: user?.uid ? user.uid.slice(-6) : "",
+    email: user?.email || "",
+    isAnonymous: Boolean(user?.isAnonymous)
+  });
+
+  if (user?.isAnonymous || (user && !user.email)) {
+    await signOutFirebase().catch(() => undefined);
+    throw new Error("匿名ログイン状態のため社員管理を開けません。メールアドレスでログインし直してください。");
+  }
+
   const token = await getFirebaseCurrentUserIdToken();
   if (!token) throw new Error("ログイン状態を確認できません。もう一度ログインしてください。");
   return {

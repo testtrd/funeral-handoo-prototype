@@ -2198,8 +2198,9 @@ function persistFamilyCopyData(nextData: HandoffData, idOverride?: string | null
                   <button onClick={clearDraft}>新しい業務引継書を作成</button>
                   <button
                     onClick={() => {
-                      logout();
-                      window.location.href = "/login";
+                      void logout().finally(() => {
+                        window.location.href = "/login";
+                      });
                     }}
                   >
                     ログアウト

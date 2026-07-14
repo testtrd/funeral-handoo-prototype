@@ -166,10 +166,10 @@ export async function login(userId: string, password: string): Promise<{ session
   }
 }
 
-export function logout() {
+export async function logout() {
   if (!canUseStorage()) return;
   window.localStorage.removeItem(authSessionKey);
-  void signOutFirebase();
+  await signOutFirebase();
 }
 
 export async function sendPasswordReset(email: string) {

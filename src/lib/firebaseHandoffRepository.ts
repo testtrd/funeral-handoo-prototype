@@ -58,7 +58,7 @@ function logClientSyncError(message: string, details: Record<string, unknown>) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ level: "error", message, details })
   }).catch(() => {
-    // Keep the original Firestore error as the important failure.
+    // The original Firestore error is the important failure.
   });
 }
 
@@ -81,15 +81,15 @@ export async function saveHandoffRecordToCloud(record: HandoffRecord) {
   try {
     user = await ensureFirebaseAuthSession();
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Firebase Authenticationの匿名ログインに失敗しました。";
-    console.error("[Firestore sync] Anonymous auth failed before setDoc.", {
+    const message = error instanceof Error ? error.message : "Firebase Authenticationのメールログイン状態を確認できません。";
+    console.error("[Firestore sync] Email auth is required before setDoc.", {
       collection: handoffCollectionName,
       recordId: record.id,
       message,
       debug: getFirebaseDebugInfo(),
       error
     });
-    logClientSyncError("Firebase anonymous auth failed.", {
+    logClientSyncError("Firebase email auth is required before setDoc.", {
       collection: handoffCollectionName,
       recordId: record.id,
       message,
@@ -97,15 +97,15 @@ export async function saveHandoffRecordToCloud(record: HandoffRecord) {
     });
     throw new Error(message);
   }
+
   if (!user) {
-    const message =
-      "Firebase Authenticationの匿名ログインに失敗しました。Firebase ConsoleでAuthenticationの匿名ログインが有効か確認してください。";
+    const message = "Firebase Authenticationのメールログイン状態を確認できません。";
     console.error("[Firestore sync] Auth session is missing.", {
       collection: handoffCollectionName,
       recordId: record.id,
       debug: getFirebaseDebugInfo()
     });
-    logClientSyncError("Firebase anonymous auth failed.", {
+    logClientSyncError("Firebase email auth is missing.", {
       collection: handoffCollectionName,
       recordId: record.id,
       ...getFirebaseDebugInfo()
@@ -118,8 +118,9 @@ export async function saveHandoffRecordToCloud(record: HandoffRecord) {
     collection: handoffCollectionName,
     recordId: record.id,
     path: `${handoffCollectionName}/${record.id}`,
-    auth: "signed-in",
-    uid: user.uid,
+    auth: "email",
+    uidSuffix: user.uid.slice(-6),
+    email: user.email || "",
     debug: getFirebaseDebugInfo()
   });
 
@@ -162,20 +163,21 @@ export async function getCloudHandoffRecords() {
   try {
     user = await ensureFirebaseAuthSession();
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Firebase Authenticationの匿名ログインに失敗しました。";
-    console.error("[Firestore sync] getDocs skipped because anonymous auth failed.", {
+    const message = error instanceof Error ? error.message : "Firebase Authenticationのメールログイン状態を確認できません。";
+    console.error("[Firestore sync] getDocs skipped because email auth is missing.", {
       collection: handoffCollectionName,
       message,
       debug: getFirebaseDebugInfo(),
       error
     });
-    logClientSyncError("Firebase anonymous auth failed before getDocs.", {
+    logClientSyncError("Firebase email auth is missing before getDocs.", {
       collection: handoffCollectionName,
       message,
       ...getFirebaseDebugInfo()
     });
     return [];
   }
+
   if (!user) {
     console.error("[Firestore sync] getDocs skipped because auth session is missing.", {
       collection: handoffCollectionName,
@@ -187,8 +189,9 @@ export async function getCloudHandoffRecords() {
   try {
     console.info("[Firestore sync] getDocs start.", {
       collection: handoffCollectionName,
-      auth: "signed-in",
-      uid: user.uid,
+      auth: "email",
+      uidSuffix: user.uid.slice(-6),
+      email: user.email || "",
       debug: getFirebaseDebugInfo()
     });
     const snapshot = await getDocs(collection(db, handoffCollectionName));
@@ -236,7 +239,7 @@ export async function subscribeCloudHandoffRecords(
     const user = await ensureFirebaseAuthSession();
     if (!user) return null;
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Firebase Authentication縺ｮ蛹ｿ蜷阪Ο繧ｰ繧､繝ｳ縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・";
+    const message = error instanceof Error ? error.message : "Firebase Authenticationのメールログイン状態を確認できません。";
     console.error("[Firestore sync] onSnapshot skipped because auth failed.", {
       collection: handoffCollectionName,
       message,

@@ -3,6 +3,13 @@
 import { useEffect, useState } from "react";
 import { getCurrentUser, getDefaultPathForRole, logout, type AuthRole, type AuthSession } from "@/lib/authService";
 
+async function logoutAndGoLogin() {
+  await logout().catch((error) => {
+    console.warn("[AuthGate] Firebase sign-out failed.", error);
+  });
+  window.location.href = "/login";
+}
+
 export function AuthGate({ allowedRoles, children }: { allowedRoles?: AuthRole[]; children: React.ReactNode }) {
   const [user, setUser] = useState<AuthSession | null>(null);
   const [checked, setChecked] = useState(false);
@@ -51,12 +58,7 @@ export function AuthGate({ allowedRoles, children }: { allowedRoles?: AuthRole[]
             <a className="button-link" href={getDefaultPathForRole(user.role)}>
               利用できる画面へ移動
             </a>
-            <button
-              onClick={() => {
-                logout();
-                window.location.href = "/login";
-              }}
-            >
+            <button type="button" onClick={() => void logoutAndGoLogin()}>
               ログアウト
             </button>
           </div>
@@ -86,13 +88,7 @@ export function AuthStatus() {
     <div className="auth-status">
       <span>{user.name}</span>
       <span>{user.role}</span>
-      <button
-        type="button"
-        onClick={() => {
-          logout();
-          window.location.href = "/login";
-        }}
-      >
+      <button type="button" onClick={() => void logoutAndGoLogin()}>
         ログアウト
       </button>
     </div>
