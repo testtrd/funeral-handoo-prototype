@@ -688,7 +688,6 @@ export default function AdminDashboard() {
           <a className="button-link" href="/admin/report-preview">帳票プレビュー</a>
           <button onClick={openBulkMode}>PDF保存・印刷・共有</button>
           {isAdmin ? <a className="button-link" href="/admin/master">マスター管理</a> : null}
-          {isAdmin ? <a className="button-link" href="/admin/master/users">社員管理</a> : null}
         </div>
       </header>
       <SyncStatusBanner />
