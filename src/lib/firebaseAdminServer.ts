@@ -10,6 +10,15 @@ type FirestoreDoc = {
   data: () => Record<string, unknown> | undefined;
 };
 
+type DecodedToken = {
+  uid: string;
+  email?: string;
+  name?: string;
+  role?: string;
+  status?: string;
+  admin?: boolean;
+};
+
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
@@ -25,6 +34,10 @@ function roleFromValue(value: unknown): AuthRole {
   return value === "admin" || value === "office" || value === "driver" ? value : "driver";
 }
 
+function statusFromValue(value: unknown): UserAccountStatus {
+  return value === "inactive" ? "inactive" : "active";
+}
+
 function userFromDoc(doc: FirestoreDoc): UserAccount {
   const data = doc.data() || {};
   const now = new Date().toISOString();
@@ -35,7 +48,7 @@ function userFromDoc(doc: FirestoreDoc): UserAccount {
     department: String(data.department || ""),
     branchId: String(data.branchId || ""),
     role: roleFromValue(data.role),
-    status: data.status === "inactive" ? "inactive" : "active",
+    status: statusFromValue(data.status),
     notes: String(data.notes || ""),
     createdAt: String(data.createdAt || now),
     updatedAt: String(data.updatedAt || now)
@@ -50,13 +63,9 @@ function validateCreateInput(input: CreateUserAccountInput) {
 
   if (!name) throw new Error("氏名を入力してください。");
   if (!email) throw new Error("LINE WORKSメールアドレスを入力してください。");
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    throw new Error("メールアドレスの形式を確認してください。");
-  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("メールアドレスの形式を確認してください。");
   if (password.length < 6) throw new Error("初期パスワードは6文字以上で入力してください。");
-  if (password !== confirmPassword) {
-    throw new Error("初期パスワードと確認用パスワードが一致しません。");
-  }
+  if (password !== confirmPassword) throw new Error("初期パスワードと確認用パスワードが一致しません。");
 
   return {
     name,
@@ -69,10 +78,25 @@ function validateCreateInput(input: CreateUserAccountInput) {
   };
 }
 
-function decodedIsAdmin(decoded: { email?: string; role?: string; status?: string; admin?: boolean }) {
-  const email = normalizeEmail(decoded.email || "");
-  if (email && adminEmails().includes(email)) return true;
+function claimsAreAdmin(decoded: DecodedToken) {
   return (decoded.role === "admin" || decoded.admin === true) && decoded.status !== "inactive";
+}
+
+function profileIsAdmin(profile: Record<string, unknown> | undefined) {
+  return profile?.role === "admin" && profile.status !== "inactive";
+}
+
+async function refreshAdminClaims(
+  auth: ReturnType<typeof getFirebaseAdmin>["auth"],
+  uid: string,
+  reason: "initial-email" | "firestore-profile"
+) {
+  await auth.setCustomUserClaims(uid, { role: "admin", status: "active" }).catch((error: unknown) => {
+    console.warn("[Firebase Admin] Admin custom claim could not be refreshed.", {
+      reason,
+      error
+    });
+  });
 }
 
 export async function requireAdminUser(request: Request) {
@@ -81,14 +105,54 @@ export async function requireAdminUser(request: Request) {
   if (!token) throw new Error("ログイン状態を確認できません。もう一度ログインしてください。");
 
   const { auth, db } = getFirebaseAdmin();
-  const decoded = await auth.verifyIdToken(token);
-  if (decodedIsAdmin(decoded)) {
-    const email = normalizeEmail(decoded.email || "");
-    if (email && adminEmails().includes(email)) {
-      await auth.setCustomUserClaims(decoded.uid, { role: "admin", status: "active" }).catch((error: unknown) => {
-        console.warn("[Firebase Admin] Initial admin custom claim could not be refreshed.", error);
+  const decoded = await auth.verifyIdToken(token) as DecodedToken;
+  const email = normalizeEmail(decoded.email || "");
+  const initialAdmin = Boolean(email && adminEmails().includes(email));
+
+  const userRef = db.collection("users").doc(decoded.uid);
+  const profileSnapshot = await userRef.get().catch((error: unknown) => {
+    console.warn("[Firebase Admin] Failed to read current user profile for admin check.", { error });
+    return null;
+  });
+  const profile = profileSnapshot?.data();
+  const customClaimAdmin = claimsAreAdmin(decoded);
+  const firestoreProfileAdmin = profileIsAdmin(profile);
+
+  console.log("[Firebase Admin] admin check", {
+    uidPresent: Boolean(decoded.uid),
+    emailPresent: Boolean(email),
+    initialAdmin,
+    customClaimAdmin,
+    firestoreProfileAdmin,
+    claimRole: decoded.role || "",
+    claimStatus: decoded.status || "",
+    profileRole: String(profile?.role || ""),
+    profileStatus: String(profile?.status || "")
+  });
+
+  if (initialAdmin || customClaimAdmin || firestoreProfileAdmin) {
+    if (initialAdmin && (!profileSnapshot?.exists || profile?.role !== "admin" || profile?.status === "inactive")) {
+      const now = new Date().toISOString();
+      await userRef.set(
+        {
+          uid: decoded.uid,
+          name: String(profile?.name || decoded.name || email || "管理者"),
+          email,
+          role: "admin",
+          status: "active",
+          updatedAt: now,
+          createdAt: String(profile?.createdAt || now)
+        },
+        { merge: true }
+      ).catch((error: unknown) => {
+        console.warn("[Firebase Admin] Initial admin profile could not be refreshed.", { error });
       });
     }
+
+    if (!customClaimAdmin) {
+      await refreshAdminClaims(auth, decoded.uid, initialAdmin ? "initial-email" : "firestore-profile");
+    }
+
     return { decoded, auth, db };
   }
 
