@@ -25,3 +25,11 @@ export type CreateUserAccountInput = {
   role: AuthRole;
   notes?: string;
 };
+
+export type UpdateUserAccountInput = {
+  name: string;
+  department?: string;
+  branchId?: string;
+  role: AuthRole;
+  notes?: string;
+};

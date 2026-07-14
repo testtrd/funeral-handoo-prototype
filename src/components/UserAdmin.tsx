@@ -6,6 +6,7 @@ import {
   createUserAccount,
   getUserAccounts,
   sendUserPasswordReset,
+  updateUserAccount,
   updateUserAccountStatus
 } from "@/lib/userAccountService";
 import type { AuthRole } from "@/lib/authService";
@@ -42,6 +43,7 @@ function formatDate(value: string) {
 export default function UserAdmin({ embedded = false }: { embedded?: boolean }) {
   const [users, setUsers] = useState<UserAccount[]>([]);
   const [form, setForm] = useState<CreateUserAccountInput>(emptyForm);
+  const [editingUid, setEditingUid] = useState("");
   const [search, setSearch] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -82,17 +84,54 @@ export default function UserAdmin({ embedded = false }: { embedded?: boolean }) 
     setSaving(true);
     setMessage("");
     setError("");
+
     try {
-      const created = await createUserAccount(form);
-      setUsers((current) => [created, ...current.filter((user) => user.uid !== created.uid)]);
+      if (editingUid) {
+        const updated = await updateUserAccount(editingUid, {
+          name: form.name,
+          department: form.department,
+          branchId: form.branchId,
+          role: form.role,
+          notes: form.notes
+        });
+        setUsers((current) => current.map((user) => (user.uid === updated.uid ? updated : user)));
+        setMessage("社員情報を更新しました。");
+      } else {
+        const created = await createUserAccount(form);
+        setUsers((current) => [created, ...current.filter((user) => user.uid !== created.uid)]);
+        setMessage("社員アカウントを登録しました。");
+      }
       setForm(emptyForm);
-      setMessage("社員アカウントを登録しました。");
+      setEditingUid("");
     } catch (error) {
-      console.error("[UserAdmin] Create user failed.", error);
-      setError(error instanceof Error ? error.message : "社員アカウントを登録できませんでした。");
+      console.error("[UserAdmin] Save user failed.", error);
+      setError(error instanceof Error ? error.message : "社員アカウントを保存できませんでした。");
     } finally {
       setSaving(false);
     }
+  }
+
+  function startEdit(user: UserAccount) {
+    setEditingUid(user.uid);
+    setMessage("");
+    setError("");
+    setForm({
+      name: user.name,
+      email: user.email,
+      password: "",
+      confirmPassword: "",
+      department: user.department || "",
+      branchId: user.branchId || "",
+      role: user.role,
+      notes: user.notes || ""
+    });
+  }
+
+  function cancelEdit() {
+    setEditingUid("");
+    setForm(emptyForm);
+    setMessage("");
+    setError("");
   }
 
   async function changeStatus(user: UserAccount) {
@@ -129,60 +168,66 @@ export default function UserAdmin({ embedded = false }: { embedded?: boolean }) 
   return (
     <Shell className={embedded ? "master-panel user-admin-embedded" : "admin-shell"}>
       {!embedded ? (
-      <header className="admin-header">
-        <div>
-          <p className="eyebrow">管理者設定</p>
-          <h1>社員アカウント管理</h1>
-          <p className="small">LINE WORKSメールアドレスをログインIDとして使用します。</p>
-        </div>
-        <div className="toolbar">
-          <AuthStatus />
-          <a className="button-link" href="/dashboard">
-            ダッシュボード
-          </a>
-          <a className="button-link" href="/admin/master">
-            マスター管理
-          </a>
-        </div>
-      </header>
+        <header className="admin-header">
+          <div>
+            <p className="eyebrow">管理者設定</p>
+            <h1>社員管理</h1>
+            <p className="small">LINE WORKSメールアドレスをログインIDとして使用します。</p>
+          </div>
+          <div className="toolbar">
+            <AuthStatus />
+            <a className="button-link" href="/dashboard">
+              ダッシュボード
+            </a>
+            <a className="button-link" href="/admin/master">
+              マスター管理
+            </a>
+          </div>
+        </header>
       ) : null}
 
       <section className="user-admin-grid">
         <form className="user-admin-form" onSubmit={submit}>
-          <h2>新規社員追加</h2>
+          <h2>{editingUid ? "社員情報を編集" : "新規社員追加"}</h2>
           <label>
             氏名
             <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
           </label>
-          <label>
-            LINE WORKSメールアドレス
-            <input
-              type="email"
-              value={form.email}
-              onChange={(event) => setForm({ ...form, email: event.target.value })}
-              inputMode="email"
-            />
-          </label>
-          <div className="two-column-fields">
-            <label>
-              初期パスワード
-              <input
-                type="password"
-                value={form.password}
-                onChange={(event) => setForm({ ...form, password: event.target.value })}
-                autoComplete="new-password"
-              />
-            </label>
-            <label>
-              初期パスワード確認
-              <input
-                type="password"
-                value={form.confirmPassword}
-                onChange={(event) => setForm({ ...form, confirmPassword: event.target.value })}
-                autoComplete="new-password"
-              />
-            </label>
-          </div>
+          {editingUid ? (
+            <p className="small">ログインID: {form.email}</p>
+          ) : (
+            <>
+              <label>
+                LINE WORKSメールアドレス
+                <input
+                  type="email"
+                  value={form.email}
+                  onChange={(event) => setForm({ ...form, email: event.target.value })}
+                  inputMode="email"
+                />
+              </label>
+              <div className="two-column-fields">
+                <label>
+                  初期パスワード
+                  <input
+                    type="password"
+                    value={form.password}
+                    onChange={(event) => setForm({ ...form, password: event.target.value })}
+                    autoComplete="new-password"
+                  />
+                </label>
+                <label>
+                  初期パスワード確認
+                  <input
+                    type="password"
+                    value={form.confirmPassword}
+                    onChange={(event) => setForm({ ...form, confirmPassword: event.target.value })}
+                    autoComplete="new-password"
+                  />
+                </label>
+              </div>
+            </>
+          )}
           <div className="two-column-fields">
             <label>
               所属
@@ -202,8 +247,13 @@ export default function UserAdmin({ embedded = false }: { embedded?: boolean }) 
             <textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
           </label>
           <button className="primary" type="submit" disabled={saving}>
-            {saving ? "登録中..." : "社員を追加"}
+            {saving ? "保存中..." : editingUid ? "社員情報を保存" : "社員を追加"}
           </button>
+          {editingUid ? (
+            <button type="button" onClick={cancelEdit}>
+              編集をキャンセル
+            </button>
+          ) : null}
         </form>
 
         <section className="user-admin-list">
@@ -248,6 +298,9 @@ export default function UserAdmin({ embedded = false }: { embedded?: boolean }) 
                       <td>{formatDate(user.createdAt)}</td>
                       <td>
                         <div className="table-actions compact-actions">
+                          <button type="button" onClick={() => startEdit(user)}>
+                            編集
+                          </button>
                           <button type="button" onClick={() => resetPassword(user)}>
                             再設定
                           </button>

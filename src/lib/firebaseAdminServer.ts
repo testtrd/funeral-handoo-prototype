@@ -2,7 +2,7 @@ import "server-only";
 
 import type { AuthRole } from "@/lib/authService";
 import { getFirebaseAdmin } from "@/lib/firebase-admin";
-import type { CreateUserAccountInput, UserAccount, UserAccountStatus } from "@/lib/userAccountTypes";
+import type { CreateUserAccountInput, UpdateUserAccountInput, UserAccount, UserAccountStatus } from "@/lib/userAccountTypes";
 
 type FirestoreDoc = {
   id: string;
@@ -74,6 +74,19 @@ function validateCreateInput(input: CreateUserAccountInput) {
     name,
     email,
     password,
+    role: roleFromValue(input.role),
+    department: input.department?.trim() || "",
+    branchId: input.branchId?.trim() || "",
+    notes: input.notes?.trim() || ""
+  };
+}
+
+function validateUpdateInput(input: UpdateUserAccountInput) {
+  const name = input.name.trim();
+  if (!name) throw new Error("氏名を入力してください。");
+
+  return {
+    name,
     role: roleFromValue(input.role),
     department: input.department?.trim() || "",
     branchId: input.branchId?.trim() || "",
@@ -267,6 +280,41 @@ export async function setEmployeeAccountStatus(request: Request, uid: string, st
 
   const now = new Date().toISOString();
   await userRef.update({ status, updatedAt: now });
+  const updated = await userRef.get();
+  return userFromDoc(updated);
+}
+
+export async function updateEmployeeAccount(request: Request, uid: string, input: UpdateUserAccountInput): Promise<UserAccount> {
+  const { auth, db } = await requireAdminUser(request);
+  if (!uid) throw new Error("対象社員を確認できません。");
+  const normalized = validateUpdateInput(input);
+
+  const userRef = db.collection("users").doc(uid);
+  const current = await userRef.get();
+  if (!current.exists) throw new Error("対象社員が見つかりません。");
+  const currentData = current.data() || {};
+  const status = statusFromValue(currentData.status);
+  const now = new Date().toISOString();
+
+  await auth.updateUser(uid, {
+    displayName: normalized.name,
+    disabled: status === "inactive"
+  });
+  await auth.setCustomUserClaims(uid, { role: normalized.role, status });
+  await userRef.set(
+    {
+      uid,
+      name: normalized.name,
+      department: normalized.department,
+      branchId: normalized.branchId,
+      role: normalized.role,
+      notes: normalized.notes,
+      status,
+      updatedAt: now
+    },
+    { merge: true }
+  );
+
   const updated = await userRef.get();
   return userFromDoc(updated);
 }

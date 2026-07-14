@@ -6,7 +6,7 @@ import {
   sendFirebasePasswordReset,
   signOutFirebase
 } from "@/lib/firebaseClient";
-import type { CreateUserAccountInput, UserAccount, UserAccountStatus } from "@/lib/userAccountTypes";
+import type { CreateUserAccountInput, UpdateUserAccountInput, UserAccount, UserAccountStatus } from "@/lib/userAccountTypes";
 
 function normalizeUserAccount(raw: Partial<UserAccount> & { uid?: string; id?: string }): UserAccount {
   const now = new Date().toISOString();
@@ -82,6 +82,15 @@ export async function getUserAccounts(): Promise<UserAccount[]> {
 export async function createUserAccount(input: CreateUserAccountInput): Promise<UserAccount> {
   const result = await requestJson<{ user: UserAccount }>("/api/admin/users", {
     method: "POST",
+    headers: await authHeaders(),
+    body: JSON.stringify(input)
+  });
+  return normalizeUserAccount(result.user);
+}
+
+export async function updateUserAccount(uid: string, input: UpdateUserAccountInput): Promise<UserAccount> {
+  const result = await requestJson<{ user: UserAccount }>(`/api/admin/users/${encodeURIComponent(uid)}`, {
+    method: "PATCH",
     headers: await authHeaders(),
     body: JSON.stringify(input)
   });
