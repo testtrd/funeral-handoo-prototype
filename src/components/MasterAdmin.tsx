@@ -38,9 +38,7 @@ const sectionLabels: Record<MasterSection, string> = {
 const sectionLinks: Array<[MasterSection, string]> = [
   ["overview", "/admin/master"],
   ["branches", "/admin/master/branches"],
-  ["vendors", "/admin/master/vendors"],
-  ["rules", "/admin/master/vendor-rules"],
-  ["questions", "/admin/master/extra-questions"]
+  ["vendors", "/admin/master/vendors"]
 ];
 
 function nowIso() {
@@ -167,6 +165,26 @@ export default function MasterAdmin({ section = "overview" }: { section?: Master
     }
   }, [questionVendors, questionForm.vendorId]);
   const visibleVendors = useMemo(() => vendorsForBranch(master, vendorBranchId), [master, vendorBranchId]);
+  const isVendorSaved = useMemo(() => master.vendors.some((vendor) => vendor.id === vendorForm.id), [master.vendors, vendorForm.id]);
+  const selectedVendorRule = useMemo(() => {
+    if (!vendorForm.id) return null;
+    const base = buildDefaultMasterData().vendorRules[0];
+    if (ruleForm?.vendorId === vendorForm.id) return ruleForm;
+    return master.vendorRules.find((rule) => rule.vendorId === vendorForm.id) || { ...base, vendorId: vendorForm.id };
+  }, [master.vendorRules, ruleForm, vendorForm.id]);
+  const vendorQuestions = useMemo(() => {
+    if (!vendorForm.id) return [];
+    return master.extraQuestions
+      .filter((question) => question.vendorId === vendorForm.id)
+      .sort((left, right) => left.sortOrder - right.sortOrder);
+  }, [master.extraQuestions, vendorForm.id]);
+
+  useEffect(() => {
+    if (section !== "vendors" || !vendorForm.id) return;
+    if (questionForm.vendorId !== vendorForm.id) {
+      setQuestionForm(emptyQuestion(vendorForm.id));
+    }
+  }, [section, vendorForm.id, questionForm.vendorId]);
 
   function reload() {
     setMaster(getMasterData());
@@ -210,6 +228,17 @@ export default function MasterAdmin({ section = "overview" }: { section?: Master
     reload();
   }
 
+  function selectVendorForEdit(vendor: ManagedVendor) {
+    const branchId = branchIdForVendor(master, vendor.id);
+    setVendorBranchId(branchId);
+    setVendorForm(vendor);
+    setRuleBranchId(branchId);
+    setRuleVendorId(vendor.id);
+    setRuleForm(null);
+    setQuestionBranchId(branchId);
+    setQuestionForm(emptyQuestion(vendor.id));
+  }
+
   function submitRule(rule: VendorRule) {
     saveVendorRule(rule);
     reload();
@@ -220,6 +249,64 @@ export default function MasterAdmin({ section = "overview" }: { section?: Master
     saveExtraQuestion(questionForm);
     setQuestionForm(emptyQuestion(questionForm.vendorId));
     reload();
+  }
+
+  function submitVendorQuestion() {
+    if (!vendorForm.id) return alert("先に業者を選択してください。");
+    const nextQuestion = { ...questionForm, vendorId: vendorForm.id };
+    if (!nextQuestion.id || !nextQuestion.label) return alert("質問ID・項目名を入力してください。");
+    saveExtraQuestion(nextQuestion);
+    setQuestionForm(emptyQuestion(vendorForm.id));
+    reload();
+  }
+
+  function renderRuleFields(
+    rule: VendorRule,
+    onChange: (nextRule: VendorRule) => void,
+    onSave: () => void,
+    saveLabel = "ルールを保存"
+  ) {
+    return (
+      <div className="master-form">
+        <div className="master-check-grid">
+          {[
+            ["火葬予約済みを必須にする", "cremationReservationRequired"],
+            ["未予約なら完了不可にする", "blockCompletionIfCremationNotReserved"],
+            ["喪主・代表者の生年月日を表示", "showMournerBirthDate"],
+            ["喪主・代表者の生年月日を必須", "requireMournerBirthDate"],
+            ["連絡希望先を表示", "showPreferredContact"],
+            ["葬儀規模を表示", "showFuneralScale"],
+            ["会員・非会員を表示", "showMembership"],
+            ["組合員区分を表示", "showUnionMemberType"],
+            ["外部問い合わせ回答を表示", "showExternalInquiryAnswer"],
+            ["遺影写真を表示", "showPortraitPhoto"],
+            ["ペースメーカーを表示", "showPacemaker"],
+            ["ペースメーカーを必須", "requirePacemaker"],
+            ["火葬予約前確認を表示", "showCremationPreCheck"],
+            ["有効", "enabled"]
+          ].map(([label, key]) => (
+            <BoolField
+              key={key}
+              label={label}
+              checked={Boolean(rule[key as keyof VendorRule])}
+              onChange={(checked) => onChange({ ...rule, [key]: checked })}
+            />
+          ))}
+        </div>
+        <TextAreaField label="葬儀規模 選択肢" value={optionsToText(rule.funeralScaleOptions)} onChange={(text) => onChange({ ...rule, funeralScaleOptions: splitOptions(text) })} />
+        <TextAreaField label="会員・非会員 選択肢" value={optionsToText(rule.membershipOptions)} onChange={(text) => onChange({ ...rule, membershipOptions: splitOptions(text) })} />
+        <TextAreaField label="組合員区分 選択肢" value={optionsToText(rule.unionMemberTypeOptions)} onChange={(text) => onChange({ ...rule, unionMemberTypeOptions: splitOptions(text) })} />
+        <TextAreaField label="外部問い合わせ回答 選択肢" value={optionsToText(rule.externalInquiryAnswerOptions)} onChange={(text) => onChange({ ...rule, externalInquiryAnswerOptions: splitOptions(text) })} />
+        <TextAreaField label="遺影写真 選択肢" value={optionsToText(rule.portraitPhotoOptions)} onChange={(text) => onChange({ ...rule, portraitPhotoOptions: splitOptions(text) })} />
+        <TextAreaField
+          label="業務終了後入力 引継ぎ候補"
+          value={optionsToText(rule.handoffNoteOptions)}
+          onChange={(text) => onChange({ ...rule, handoffNoteOptions: splitOptions(text) })}
+          placeholder="例：火葬予約済み"
+        />
+        <button className="primary" disabled={!rule.vendorId} onClick={onSave}><Save size={18} /> {saveLabel}</button>
+      </div>
+    );
   }
 
   return (
@@ -303,7 +390,7 @@ export default function MasterAdmin({ section = "overview" }: { section?: Master
               <tbody>{visibleVendors.map((vendor) => (
                 <tr key={vendor.id}>
                   <td>{vendor.id}</td><td>{vendor.name}</td><td>{vendor.funeralCompanyContact || "未登録"}</td><td>{vendor.enabled ? "有効" : "無効"}</td>
-                  <td><button onClick={() => { setVendorBranchId(branchIdForVendor(master, vendor.id)); setVendorForm(vendor); }}>編集</button><button onClick={() => { deleteVendor(vendor.id); reload(); }}>削除</button></td>
+                  <td><button onClick={() => selectVendorForEdit(vendor)}>編集</button><button onClick={() => { deleteVendor(vendor.id); reload(); }}>削除</button></td>
                 </tr>
               ))}
               {!visibleVendors.length ? <tr><td colSpan={5} className="empty-state">この拠点に紐づく業者はありません。</td></tr> : null}</tbody>
@@ -328,6 +415,72 @@ export default function MasterAdmin({ section = "overview" }: { section?: Master
               <button onClick={() => setVendorForm(emptyVendor(vendorBranchId ? [vendorBranchId] : []))}><Plus size={18} /> 新規入力</button>
             </div>
           </article>
+          {vendorForm.id && !isVendorSaved ? (
+            <article className="master-panel">
+              <h2>業者ルール・追加質問</h2>
+              <p className="small">業者情報を保存すると、この画面で業者ルールと追加質問を編集できます。</p>
+            </article>
+          ) : null}
+          {isVendorSaved && selectedVendorRule ? (
+            <article className="master-panel">
+              <h2>{vendorForm.name || vendorForm.id} の業者ルール</h2>
+              <p className="small">選択中の業者に対する入力項目の表示条件や選択肢を設定します。</p>
+              {renderRuleFields(
+                selectedVendorRule,
+                (nextRule) => setRuleForm(nextRule),
+                () => {
+                  submitRule(selectedVendorRule);
+                  setRuleForm(null);
+                },
+                "業者ルールを保存"
+              )}
+            </article>
+          ) : null}
+          {isVendorSaved ? (
+            <article className="master-panel">
+              <h2>{vendorForm.name || vendorForm.id} の追加質問</h2>
+              <table className="admin-table compact">
+                <thead><tr><th>項目名</th><th>形式</th><th>必須</th><th>状態</th><th></th></tr></thead>
+                <tbody>
+                  {vendorQuestions.map((question) => (
+                    <tr key={question.id}>
+                      <td>{question.label}</td>
+                      <td>{question.inputType}</td>
+                      <td>{question.required ? "必須" : "-"}</td>
+                      <td>{question.enabled ? "有効" : "無効"}</td>
+                      <td>
+                        <button onClick={() => setQuestionForm(question)}>編集</button>
+                        <button onClick={() => { deleteExtraQuestion(question.id); reload(); }}>削除</button>
+                      </td>
+                    </tr>
+                  ))}
+                  {!vendorQuestions.length ? <tr><td colSpan={5} className="empty-state">この業者の追加質問はありません。</td></tr> : null}
+                </tbody>
+              </table>
+              <div className="master-form">
+                <TextField label="質問ID" value={questionForm.vendorId === vendorForm.id ? questionForm.id : ""} onChange={(id) => setQuestionForm({ ...(questionForm.vendorId === vendorForm.id ? questionForm : emptyQuestion(vendorForm.id)), id, vendorId: vendorForm.id })} />
+                <TextField label="項目名" value={questionForm.vendorId === vendorForm.id ? questionForm.label : ""} onChange={(label) => setQuestionForm({ ...(questionForm.vendorId === vendorForm.id ? questionForm : emptyQuestion(vendorForm.id)), label, vendorId: vendorForm.id })} />
+                <TextField label="説明文" value={questionForm.vendorId === vendorForm.id ? questionForm.description : ""} onChange={(description) => setQuestionForm({ ...(questionForm.vendorId === vendorForm.id ? questionForm : emptyQuestion(vendorForm.id)), description, vendorId: vendorForm.id })} />
+                <label className="master-field">
+                  <span>入力形式</span>
+                  <select value={questionForm.vendorId === vendorForm.id ? questionForm.inputType : "text"} onChange={(event) => setQuestionForm({ ...(questionForm.vendorId === vendorForm.id ? questionForm : emptyQuestion(vendorForm.id)), inputType: event.target.value as ExtraQuestion["inputType"], vendorId: vendorForm.id })}>
+                    {["text", "textarea", "radio", "checkbox", "date", "time", "number"].map((type) => <option key={type} value={type}>{type}</option>)}
+                  </select>
+                </label>
+                <TextAreaField label="選択肢（1行に1つ、radio/checkbox用）" value={questionForm.vendorId === vendorForm.id ? optionsToText(questionForm.options) : ""} onChange={(text) => setQuestionForm({ ...(questionForm.vendorId === vendorForm.id ? questionForm : emptyQuestion(vendorForm.id)), options: splitOptions(text), vendorId: vendorForm.id })} />
+                <TextField label="表示順" value={String(questionForm.vendorId === vendorForm.id ? questionForm.sortOrder : 50)} onChange={(sortOrder) => setQuestionForm({ ...(questionForm.vendorId === vendorForm.id ? questionForm : emptyQuestion(vendorForm.id)), sortOrder: Number(sortOrder) || 0, vendorId: vendorForm.id })} />
+                <div className="master-check-grid">
+                  <BoolField label="必須" checked={questionForm.vendorId === vendorForm.id ? questionForm.required : false} onChange={(required) => setQuestionForm({ ...(questionForm.vendorId === vendorForm.id ? questionForm : emptyQuestion(vendorForm.id)), required, vendorId: vendorForm.id })} />
+                  <BoolField label="確認画面に表示" checked={questionForm.vendorId === vendorForm.id ? questionForm.showOnConfirm : true} onChange={(showOnConfirm) => setQuestionForm({ ...(questionForm.vendorId === vendorForm.id ? questionForm : emptyQuestion(vendorForm.id)), showOnConfirm, vendorId: vendorForm.id })} />
+                  <BoolField label="業者提出用に表示" checked={questionForm.vendorId === vendorForm.id ? questionForm.showOnVendorPdf : true} onChange={(showOnVendorPdf) => setQuestionForm({ ...(questionForm.vendorId === vendorForm.id ? questionForm : emptyQuestion(vendorForm.id)), showOnVendorPdf, vendorId: vendorForm.id })} />
+                  <BoolField label="社内保管用に表示" checked={questionForm.vendorId === vendorForm.id ? questionForm.showOnInternalPdf : true} onChange={(showOnInternalPdf) => setQuestionForm({ ...(questionForm.vendorId === vendorForm.id ? questionForm : emptyQuestion(vendorForm.id)), showOnInternalPdf, vendorId: vendorForm.id })} />
+                  <BoolField label="有効" checked={questionForm.vendorId === vendorForm.id ? questionForm.enabled : true} onChange={(enabled) => setQuestionForm({ ...(questionForm.vendorId === vendorForm.id ? questionForm : emptyQuestion(vendorForm.id)), enabled, vendorId: vendorForm.id })} />
+                </div>
+                <button className="primary" onClick={submitVendorQuestion}><Save size={18} /> 追加質問を保存</button>
+                <button onClick={() => setQuestionForm(emptyQuestion(vendorForm.id))}><Plus size={18} /> 新規入力</button>
+              </div>
+            </article>
+          ) : null}
         </section>
       ) : null}
 

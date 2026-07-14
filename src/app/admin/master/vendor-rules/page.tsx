@@ -1,10 +1,5 @@
-import { AuthGate } from "@/components/AuthGate";
-import MasterAdmin from "@/components/MasterAdmin";
+import { redirect } from "next/navigation";
 
 export default function MasterVendorRulesPage() {
-  return (
-    <AuthGate allowedRoles={["admin"]}>
-      <MasterAdmin section="rules" />
-    </AuthGate>
-  );
+  redirect("/admin/master/vendors");
 }
