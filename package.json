@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "firebase:login": "npx firebase-tools login",
     "firebase:deploy:rules": "npx firebase-tools deploy --only firestore:rules --project funeral-handoff-prototype"

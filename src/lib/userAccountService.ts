@@ -29,20 +29,36 @@ async function authHeaders() {
 }
 
 async function requestJson<T>(url: string, init: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(result.message || "処理に失敗しました。");
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), 15000);
+
+  try {
+    const response = await fetch(url, { ...init, signal: controller.signal });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(
+        typeof result === "object" && result && "message" in result
+          ? String((result as { message?: string }).message || "処理に失敗しました。")
+          : "処理に失敗しました。"
+      );
+    }
+    return result as T;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("サーバーから応答がありません。環境変数またはデプロイ状態を確認してください。");
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timer);
   }
-  return result as T;
 }
 
 export async function getUserAccounts(): Promise<UserAccount[]> {
-  const result = await requestJson<{ users: UserAccount[] }>("/api/admin/users", {
+  const result = await requestJson<{ users?: UserAccount[] }>("/api/admin/users", {
     method: "GET",
     headers: await authHeaders()
   });
-  return result.users.map((user) => normalizeUserAccount(user));
+  return (result.users || []).map((user) => normalizeUserAccount(user));
 }
 
 export async function createUserAccount(input: CreateUserAccountInput): Promise<UserAccount> {

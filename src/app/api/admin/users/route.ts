@@ -5,7 +5,10 @@ import type { CreateUserAccountInput } from "@/lib/userAccountTypes";
 export const runtime = "nodejs";
 
 function errorStatus(message: string) {
-  return message.includes("権限") || message.includes("ログイン") ? 403 : 400;
+  if (message.includes("ログイン状態")) return 401;
+  if (message.includes("権限")) return 403;
+  if (message.includes("環境変数")) return 500;
+  return 400;
 }
 
 export async function GET(request: Request) {
@@ -21,7 +24,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json().catch(() => ({})) as CreateUserAccountInput;
+    const body = (await request.json().catch(() => ({}))) as CreateUserAccountInput;
     const user = await createEmployeeAccount(request, body);
     return NextResponse.json({ ok: true, user });
   } catch (error) {

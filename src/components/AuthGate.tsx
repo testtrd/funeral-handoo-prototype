@@ -8,20 +8,27 @@ export function AuthGate({ allowedRoles, children }: { allowedRoles?: AuthRole[]
   const [checked, setChecked] = useState(false);
 
   useEffect(() => {
-    const current = getCurrentUser();
-    if (!current) {
-      const next = `${window.location.pathname}${window.location.search}`;
-      window.location.replace(`/login?next=${encodeURIComponent(next)}`);
-      return;
-    }
-    if (allowedRoles?.length && !allowedRoles.includes(current.role)) {
-      if (window.location.pathname.startsWith("/admin") && current.role !== "admin") {
-        window.location.replace("/dashboard");
+    try {
+      const current = getCurrentUser();
+      if (!current) {
+        const next = `${window.location.pathname}${window.location.search}`;
+        window.location.replace(`/login?next=${encodeURIComponent(next)}`);
         return;
       }
+
+      if (allowedRoles?.length && !allowedRoles.includes(current.role)) {
+        if (window.location.pathname.startsWith("/admin") && current.role !== "admin") {
+          window.location.replace("/dashboard");
+          return;
+        }
+      }
+
+      setUser(current);
+    } catch (error) {
+      console.error("[AuthGate] Failed to check auth state.", error);
+    } finally {
+      setChecked(true);
     }
-    setUser(current);
-    setChecked(true);
   }, [allowedRoles]);
 
   if (!checked) {
@@ -41,7 +48,9 @@ export function AuthGate({ allowedRoles, children }: { allowedRoles?: AuthRole[]
           <h1>権限がありません</h1>
           <p className="error">この画面を表示する権限がありません。</p>
           <div className="toolbar">
-            <a className="button-link" href={getDefaultPathForRole(user.role)}>利用できる画面へ移動</a>
+            <a className="button-link" href={getDefaultPathForRole(user.role)}>
+              利用できる画面へ移動
+            </a>
             <button
               onClick={() => {
                 logout();
@@ -62,7 +71,14 @@ export function AuthGate({ allowedRoles, children }: { allowedRoles?: AuthRole[]
 export function AuthStatus() {
   const [user, setUser] = useState<AuthSession | null>(null);
 
-  useEffect(() => setUser(getCurrentUser()), []);
+  useEffect(() => {
+    try {
+      setUser(getCurrentUser());
+    } catch (error) {
+      console.error("[AuthStatus] Failed to read current user.", error);
+      setUser(null);
+    }
+  }, []);
 
   if (!user) return null;
 

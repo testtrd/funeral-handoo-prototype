@@ -134,8 +134,12 @@ export default function UserAdmin() {
         </div>
         <div className="toolbar">
           <AuthStatus />
-          <a className="button-link" href="/dashboard">ダッシュボード</a>
-          <a className="button-link" href="/admin/master">マスター管理</a>
+          <a className="button-link" href="/dashboard">
+            ダッシュボード
+          </a>
+          <a className="button-link" href="/admin/master">
+            マスター管理
+          </a>
         </div>
       </header>
 
@@ -234,11 +238,15 @@ export default function UserAdmin() {
                       <td>{user.email}</td>
                       <td>{user.department || "-"}</td>
                       <td>{roleLabel(user.role)}</td>
-                      <td><span className="status-chip">{statusLabel(user.status)}</span></td>
+                      <td>
+                        <span className="status-chip">{statusLabel(user.status)}</span>
+                      </td>
                       <td>{formatDate(user.createdAt)}</td>
                       <td>
                         <div className="table-actions compact-actions">
-                          <button type="button" onClick={() => resetPassword(user)}>再設定</button>
+                          <button type="button" onClick={() => resetPassword(user)}>
+                            再設定
+                          </button>
                           <button
                             type="button"
                             className={user.status === "active" ? "danger-button" : ""}

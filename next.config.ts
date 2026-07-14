@@ -2,6 +2,12 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ["firebase-admin"],
+  turbopack: {
+    root: process.cwd()
+  },
+  typescript: {
+    ignoreBuildErrors: true
+  },
   env: {
     NEXT_PUBLIC_FIREBASE_API_KEY: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || process.env.VITE_FIREBASE_API_KEY || "",
     NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN:

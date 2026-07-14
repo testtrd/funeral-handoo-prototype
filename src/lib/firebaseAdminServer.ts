@@ -1,22 +1,8 @@
+import "server-only";
+
 import type { AuthRole } from "@/lib/authService";
+import { getFirebaseAdmin } from "@/lib/firebase-admin";
 import type { CreateUserAccountInput, UserAccount, UserAccountStatus } from "@/lib/userAccountTypes";
-import { createRequire } from "module";
-
-type AdminAuth = {
-  verifyIdToken: (token: string) => Promise<{ uid: string; email?: string; role?: string; status?: string; admin?: boolean }>;
-  createUser: (input: { email: string; password: string; displayName: string; disabled?: boolean }) => Promise<{ uid: string; email?: string }>;
-  updateUser: (uid: string, input: { disabled?: boolean }) => Promise<unknown>;
-  setCustomUserClaims: (uid: string, claims: Record<string, unknown>) => Promise<void>;
-};
-
-type AdminModules = {
-  getApps: () => unknown[];
-  initializeApp: (options: unknown, name?: string) => unknown;
-  cert: (serviceAccount: unknown) => unknown;
-  getApp: (name?: string) => unknown;
-  getAuth: (app?: unknown) => AdminAuth;
-  getFirestore: (app?: unknown) => FirestoreAdmin;
-};
 
 type FirestoreDoc = {
   id: string;
@@ -24,26 +10,8 @@ type FirestoreDoc = {
   data: () => Record<string, unknown> | undefined;
 };
 
-type FirestoreAdmin = {
-  collection: (name: string) => {
-    doc: (id: string) => {
-      get: () => Promise<FirestoreDoc>;
-      set: (data: Record<string, unknown>, options?: { merge: boolean }) => Promise<void>;
-      update: (data: Record<string, unknown>) => Promise<void>;
-    };
-    orderBy: (field: string, direction?: "asc" | "desc") => {
-      get: () => Promise<{ docs: FirestoreDoc[] }>;
-    };
-    get: () => Promise<{ docs: FirestoreDoc[] }>;
-  };
-};
-
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
-}
-
-function normalizePrivateKey(value: string) {
-  return value.replace(/\\n/g, "\n");
 }
 
 function adminEmails() {
@@ -51,60 +19,6 @@ function adminEmails() {
     .split(",")
     .map((value) => normalizeEmail(value))
     .filter(Boolean);
-}
-
-function serviceAccountFromEnv() {
-  if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
-    try {
-      return JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
-    } catch {
-      throw new Error("FIREBASE_SERVICE_ACCOUNT_JSONの形式を確認してください。");
-    }
-  }
-  const projectId = process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
-  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-  const privateKey = process.env.FIREBASE_PRIVATE_KEY;
-  if (!projectId || !clientEmail || !privateKey) {
-    throw new Error("Firebase Admin SDKの環境変数が未設定です。");
-  }
-  return {
-    projectId,
-    clientEmail,
-    privateKey: normalizePrivateKey(privateKey)
-  };
-}
-
-async function loadAdminModules(): Promise<AdminModules> {
-  try {
-    const serverRequire = createRequire(import.meta.url);
-    const appModule = serverRequire("firebase-admin/app") as {
-      getApps: AdminModules["getApps"];
-      initializeApp: AdminModules["initializeApp"];
-      cert: AdminModules["cert"];
-      getApp: AdminModules["getApp"];
-    };
-    const authModule = serverRequire("firebase-admin/auth") as {
-      getAuth: AdminModules["getAuth"];
-    };
-    const firestoreModule = serverRequire("firebase-admin/firestore") as {
-      getFirestore: AdminModules["getFirestore"];
-    };
-    return { ...appModule, ...authModule, ...firestoreModule };
-  } catch (error) {
-    console.error("[Firebase Admin] Failed to load firebase-admin.", error);
-    throw new Error("Firebase Admin SDKを読み込めません。firebase-adminの依存関係を確認してください。");
-  }
-}
-
-async function getAdminServices() {
-  const admin = await loadAdminModules();
-  const app = admin.getApps().length
-    ? admin.getApp("[DEFAULT]")
-    : admin.initializeApp({ credential: admin.cert(serviceAccountFromEnv()) });
-  return {
-    auth: admin.getAuth(app),
-    db: admin.getFirestore(app)
-  };
 }
 
 function roleFromValue(value: unknown): AuthRole {
@@ -133,11 +47,17 @@ function validateCreateInput(input: CreateUserAccountInput) {
   const email = normalizeEmail(input.email);
   const password = input.password;
   const confirmPassword = input.confirmPassword;
+
   if (!name) throw new Error("氏名を入力してください。");
   if (!email) throw new Error("LINE WORKSメールアドレスを入力してください。");
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("メールアドレスの形式を確認してください。");
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new Error("メールアドレスの形式を確認してください。");
+  }
   if (password.length < 6) throw new Error("初期パスワードは6文字以上で入力してください。");
-  if (password !== confirmPassword) throw new Error("初期パスワードと確認用パスワードが一致しません。");
+  if (password !== confirmPassword) {
+    throw new Error("初期パスワードと確認用パスワードが一致しません。");
+  }
+
   return {
     name,
     email,
@@ -158,17 +78,20 @@ function decodedIsAdmin(decoded: { email?: string; role?: string; status?: strin
 export async function requireAdminUser(request: Request) {
   const header = request.headers.get("authorization") || "";
   const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
-  if (!token) throw new Error("ログイン状態を確認できません。");
-  const { auth, db } = await getAdminServices();
+  if (!token) throw new Error("ログイン状態を確認できません。もう一度ログインしてください。");
+
+  const { auth, db } = getFirebaseAdmin();
   const decoded = await auth.verifyIdToken(token);
   if (decodedIsAdmin(decoded)) {
-    if (normalizeEmail(decoded.email || "") && adminEmails().includes(normalizeEmail(decoded.email || ""))) {
+    const email = normalizeEmail(decoded.email || "");
+    if (email && adminEmails().includes(email)) {
       await auth.setCustomUserClaims(decoded.uid, { role: "admin", status: "active" }).catch((error) => {
         console.warn("[Firebase Admin] Initial admin custom claim could not be refreshed.", error);
       });
     }
     return { decoded, auth, db };
   }
+
   throw new Error("この操作を行う権限がありません。");
 }
 
@@ -181,6 +104,7 @@ export async function listEmployeeAccounts(request: Request): Promise<UserAccoun
 export async function createEmployeeAccount(request: Request, input: CreateUserAccountInput): Promise<UserAccount> {
   const { auth, db } = await requireAdminUser(request);
   const normalized = validateCreateInput(input);
+
   try {
     const firebaseUser = await auth.createUser({
       email: normalized.email,
@@ -189,6 +113,7 @@ export async function createEmployeeAccount(request: Request, input: CreateUserA
       disabled: false
     });
     await auth.setCustomUserClaims(firebaseUser.uid, { role: normalized.role, status: "active" });
+
     const now = new Date().toISOString();
     const user: UserAccount = {
       uid: firebaseUser.uid,
@@ -225,6 +150,7 @@ export async function setEmployeeAccountStatus(request: Request, uid: string, st
   const role = roleFromValue(currentData.role);
   await auth.updateUser(uid, { disabled: status === "inactive" });
   await auth.setCustomUserClaims(uid, { role, status });
+
   const now = new Date().toISOString();
   await userRef.update({ status, updatedAt: now });
   const updated = await userRef.get();
