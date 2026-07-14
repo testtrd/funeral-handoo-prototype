@@ -1,4 +1,6 @@
-import { collection, deleteDoc, doc, getDocs, onSnapshot, setDoc, type Unsubscribe } from "firebase/firestore";
+import { collection, deleteDoc, doc, getDocs, onSnapshot, query, setDoc, where, type Unsubscribe } from "firebase/firestore";
+import { canViewAllCases, userBranchIds } from "@/lib/accessControl";
+import { getCurrentUser } from "@/lib/authService";
 import {
   ensureFirebaseAuthSession,
   getFirebaseDb,
@@ -60,6 +62,15 @@ function logClientSyncError(message: string, details: Record<string, unknown>) {
   }).catch(() => {
     // The original Firestore error is the important failure.
   });
+}
+
+function handoffRecordsQuery(db: NonNullable<ReturnType<typeof getFirebaseDb>>) {
+  const collectionRef = collection(db, handoffCollectionName);
+  const currentUser = getCurrentUser();
+  if (!currentUser || canViewAllCases(currentUser)) return collectionRef;
+  const branchIds = userBranchIds(currentUser).slice(0, 10);
+  if (!branchIds.length) return null;
+  return query(collectionRef, where("branchId", "in", branchIds));
 }
 
 export function isCloudSaveAvailable() {
@@ -194,7 +205,9 @@ export async function getCloudHandoffRecords() {
       email: user.email || "",
       debug: getFirebaseDebugInfo()
     });
-    const snapshot = await getDocs(collection(db, handoffCollectionName));
+    const recordsQuery = handoffRecordsQuery(db);
+    if (!recordsQuery) return [];
+    const snapshot = await getDocs(recordsQuery);
     console.info("[Firestore sync] getDocs succeeded.", {
       collection: handoffCollectionName,
       count: snapshot.docs.length
@@ -255,8 +268,11 @@ export async function subscribeCloudHandoffRecords(
     debug: getFirebaseDebugInfo()
   });
 
+  const recordsQuery = handoffRecordsQuery(db);
+  if (!recordsQuery) return null;
+
   return onSnapshot(
-    collection(db, handoffCollectionName),
+    recordsQuery,
     (snapshot) => {
       const records = snapshot.docs.map((item) => fromFirestoreRecord(item.id, item.data()));
       console.info("[Firestore sync] onSnapshot received.", {

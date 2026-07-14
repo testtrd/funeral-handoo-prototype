@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { AuthRole } from "@/lib/authService";
+import { normalizeAuthRole, type AuthRole } from "@/lib/authService";
 import { getFirebaseAdmin } from "@/lib/firebase-admin";
 import type { CreateUserAccountInput, UpdateUserAccountInput, UserAccount, UserAccountStatus } from "@/lib/userAccountTypes";
 
@@ -34,7 +34,7 @@ function adminEmails() {
 }
 
 function roleFromValue(value: unknown): AuthRole {
-  return value === "admin" || value === "office" || value === "driver" ? value : "driver";
+  return normalizeAuthRole(value);
 }
 
 function statusFromValue(value: unknown): UserAccountStatus {
@@ -111,20 +111,21 @@ function validateUpdateInput(input: UpdateUserAccountInput) {
   };
 }
 
-function claimsAreAdmin(decoded: DecodedToken) {
-  return (decoded.role === "admin" || decoded.admin === true) && decoded.status !== "inactive";
+function claimsAreMaster(decoded: DecodedToken) {
+  const role = normalizeAuthRole(decoded.role);
+  return (role === "master" || decoded.admin === true) && decoded.status !== "inactive";
 }
 
-function profileIsAdmin(profile: Record<string, unknown> | undefined) {
-  return profile?.role === "admin" && profile.status !== "inactive";
+function profileIsMaster(profile: Record<string, unknown> | undefined) {
+  return normalizeAuthRole(profile?.role) === "master" && profile?.status !== "inactive";
 }
 
 function safeSuffix(value: string) {
   return value ? value.slice(-6) : "";
 }
 
-async function refreshAdminClaims(auth: AdminAuth, uid: string, reason: "initial-email" | "firestore-profile") {
-  await auth.setCustomUserClaims(uid, { role: "admin", status: "active" }).catch((error: unknown) => {
+async function refreshMasterClaims(auth: AdminAuth, uid: string, reason: "initial-email" | "firestore-profile") {
+  await auth.setCustomUserClaims(uid, { role: "master", status: "active" }).catch((error: unknown) => {
     console.warn("[Firebase Admin] Admin custom claim could not be refreshed.", { reason, error });
   });
 }
@@ -179,8 +180,8 @@ export async function requireAdminUser(request: Request) {
   const initialAdmin = Boolean(email && configuredAdminEmails.includes(email));
   const profileResult = await findUserProfile(db, decoded.uid, email);
   const profile = profileResult.profile;
-  const customClaimAdmin = claimsAreAdmin(decoded);
-  const firestoreProfileAdmin = profileIsAdmin(profile);
+  const customClaimAdmin = claimsAreMaster(decoded);
+  const firestoreProfileAdmin = profileIsMaster(profile);
   const uidDocMatched = profileResult.source === "uid";
   const emailDocMatched = profileResult.source === "email";
 
@@ -209,7 +210,7 @@ export async function requireAdminUser(request: Request) {
       firestoreProfileAdmin ||
       !profile ||
       profileResult.docId !== decoded.uid ||
-      profile.role !== "admin" ||
+      normalizeAuthRole(profile.role) !== "master" ||
       profile.status === "inactive";
 
     if (shouldRefreshProfile) {
@@ -218,7 +219,7 @@ export async function requireAdminUser(request: Request) {
           uid: decoded.uid,
           name: String(profile?.name || decoded.name || email || "管理者"),
           email: email || String(profile?.email || ""),
-          role: "admin",
+          role: "master",
           status: "active",
           updatedAt: now,
           createdAt: String(profile?.createdAt || now)
@@ -230,7 +231,7 @@ export async function requireAdminUser(request: Request) {
     }
 
     if (!customClaimAdmin) {
-      await refreshAdminClaims(auth, decoded.uid, initialAdmin ? "initial-email" : "firestore-profile");
+      await refreshMasterClaims(auth, decoded.uid, initialAdmin ? "initial-email" : "firestore-profile");
     }
 
     return { decoded, auth, db };
@@ -256,7 +257,12 @@ export async function createEmployeeAccount(request: Request, input: CreateUserA
       displayName: normalized.name,
       disabled: false
     });
-    await auth.setCustomUserClaims(firebaseUser.uid, { role: normalized.role, status: "active" });
+    await auth.setCustomUserClaims(firebaseUser.uid, {
+      role: normalized.role,
+      status: "active",
+      branchId: normalized.branchId,
+      branchIds: normalized.branchIds
+    });
 
     const now = new Date().toISOString();
     const user: UserAccount = {
@@ -294,7 +300,9 @@ export async function setEmployeeAccountStatus(request: Request, uid: string, st
   const currentData = current.data() || {};
   const role = roleFromValue(currentData.role);
   await auth.updateUser(uid, { disabled: status === "inactive" });
-  await auth.setCustomUserClaims(uid, { role, status });
+  const branchIds = stringArrayFromValue(currentData.branchIds);
+  const branchId = String(currentData.branchId || branchIds[0] || "");
+  await auth.setCustomUserClaims(uid, { role, status, branchId, branchIds: branchIds.length ? branchIds : branchId ? [branchId] : [] });
 
   const now = new Date().toISOString();
   await userRef.update({ status, updatedAt: now });
@@ -318,7 +326,12 @@ export async function updateEmployeeAccount(request: Request, uid: string, input
     displayName: normalized.name,
     disabled: status === "inactive"
   });
-  await auth.setCustomUserClaims(uid, { role: normalized.role, status });
+  await auth.setCustomUserClaims(uid, {
+    role: normalized.role,
+    status,
+    branchId: normalized.branchId,
+    branchIds: normalized.branchIds
+  });
   await userRef.set(
     {
       uid,

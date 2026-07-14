@@ -3,7 +3,7 @@ import AdminDashboard from "@/components/AdminDashboard";
 
 export default function DashboardPage() {
   return (
-    <AuthGate allowedRoles={["admin", "office", "driver"]}>
+    <AuthGate allowedRoles={["master", "planning", "manager", "staff"]}>
       <AdminDashboard />
     </AuthGate>
   );

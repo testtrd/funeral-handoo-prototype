@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getCurrentUser, getDefaultPathForRole, logout, type AuthRole, type AuthSession } from "@/lib/authService";
+import { userRoleLabel } from "@/lib/accessControl";
 
 async function logoutAndGoLogin() {
   await logout().catch((error) => {
@@ -24,7 +25,7 @@ export function AuthGate({ allowedRoles, children }: { allowedRoles?: AuthRole[]
       }
 
       if (allowedRoles?.length && !allowedRoles.includes(current.role)) {
-        if (window.location.pathname.startsWith("/admin") && current.role !== "admin") {
+        if (window.location.pathname.startsWith("/admin/master") && current.role !== "master") {
           window.location.replace("/dashboard");
           return;
         }
@@ -87,7 +88,7 @@ export function AuthStatus() {
   return (
     <div className="auth-status">
       <span>{user.name}</span>
-      <span>{user.role}</span>
+      <span>{userRoleLabel(user.role)}</span>
       <button type="button" onClick={() => void logoutAndGoLogin()}>
         ログアウト
       </button>

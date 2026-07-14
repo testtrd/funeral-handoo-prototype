@@ -6,6 +6,7 @@ import {
   sendFirebasePasswordReset,
   signOutFirebase
 } from "@/lib/firebaseClient";
+import { normalizeAuthRole } from "@/lib/authService";
 import type { CreateUserAccountInput, UpdateUserAccountInput, UserAccount, UserAccountStatus } from "@/lib/userAccountTypes";
 
 function normalizeUserAccount(raw: Partial<UserAccount> & { uid?: string; id?: string }): UserAccount {
@@ -22,7 +23,7 @@ function normalizeUserAccount(raw: Partial<UserAccount> & { uid?: string; id?: s
     department: raw.department || "",
     branchId: raw.branchId || branchIds[0] || "",
     branchIds,
-    role: raw.role === "admin" || raw.role === "office" || raw.role === "driver" ? raw.role : "driver",
+    role: normalizeAuthRole(raw.role),
     status: raw.status === "inactive" ? "inactive" : "active",
     notes: raw.notes || "",
     createdAt: raw.createdAt || now,

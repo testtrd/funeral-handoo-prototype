@@ -3,7 +3,7 @@ import MasterAdmin from "@/components/MasterAdmin";
 
 export default function MasterPage() {
   return (
-    <AuthGate allowedRoles={["admin"]}>
+    <AuthGate allowedRoles={["master"]}>
       <MasterAdmin section="overview" />
     </AuthGate>
   );

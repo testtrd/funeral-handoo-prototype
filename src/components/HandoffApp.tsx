@@ -3,6 +3,7 @@
 import { FileDown, RotateCcw } from "lucide-react";
 import { PointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import { SyncStatusBanner } from "@/components/SyncStatusBanner";
+import { userBranchIds } from "@/lib/accessControl";
 import { getCurrentUser, logout } from "@/lib/authService";
 import {
   calculateAge,
@@ -1020,7 +1021,12 @@ export default function HandoffApp() {
     });
   }, [data.religion.hasPriest, data.religion.introductionWanted]);
 
-  const branchList = getBranches();
+  const branchList = useMemo(() => {
+    const allBranches = getBranches();
+    if (currentUser?.role === "master" || currentUser?.role === "planning") return allBranches;
+    const allowedBranchIds = userBranchIds(currentUser);
+    return allBranches.filter((item) => allowedBranchIds.includes(item.id));
+  }, [currentUser?.branchId, currentUser?.branchIds, currentUser?.role]);
   const vendorMap = getVendorMap();
   const branch = branchList.find((item) => item.id === data.branchId);
   const vendor = vendorMap[data.vendorId];
@@ -1034,6 +1040,14 @@ export default function HandoffApp() {
   const availableVendors = branch ? branch.vendorIds.map((id) => vendorMap[id]).filter(Boolean) : [];
   const errors = useMemo(() => buildValidation(data), [data]);
   const familyCopyDeliveryReady = isFamilyCopyDeliveryReady(data.familyCopyDelivery);
+
+  useEffect(() => {
+    if (!loaded || !branchList.length) return;
+    if (data.branchId && branchList.some((item) => item.id === data.branchId)) return;
+    if (branchList.length === 1) {
+      setData((current) => ({ ...current, branchId: branchList[0].id, vendorId: "" }));
+    }
+  }, [branchList, data.branchId, loaded]);
 
   function update(path: string, value: unknown) {
     setPersistDraft(true);

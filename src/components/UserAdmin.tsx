@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { AuthStatus } from "@/components/AuthGate";
+import { userRoleLabel } from "@/lib/accessControl";
 import { getAllBranches } from "@/lib/masterDataService";
 import {
   createUserAccount,
@@ -13,6 +14,43 @@ import {
 import type { AuthRole } from "@/lib/authService";
 import type { CreateUserAccountInput, UserAccount } from "@/lib/userAccountTypes";
 
+const labels = {
+  settings: "\u7ba1\u7406\u8a2d\u5b9a",
+  title: "\u793e\u54e1\u7ba1\u7406",
+  description: "LINE WORKS\u30e1\u30fc\u30eb\u30a2\u30c9\u30ec\u30b9\u3092\u30ed\u30b0\u30a4\u30f3ID\u3068\u3057\u3066\u4f7f\u7528\u3057\u307e\u3059\u3002",
+  dashboard: "\u30c0\u30c3\u30b7\u30e5\u30dc\u30fc\u30c9",
+  masterAdmin: "\u30de\u30b9\u30bf\u30fc\u7ba1\u7406",
+  editEmployee: "\u793e\u54e1\u60c5\u5831\u3092\u7de8\u96c6",
+  newEmployee: "\u65b0\u898f\u793e\u54e1\u8ffd\u52a0",
+  name: "\u6c0f\u540d",
+  loginId: "\u30ed\u30b0\u30a4\u30f3ID",
+  email: "LINE WORKS\u30e1\u30fc\u30eb\u30a2\u30c9\u30ec\u30b9",
+  initialPassword: "\u521d\u671f\u30d1\u30b9\u30ef\u30fc\u30c9",
+  confirmPassword: "\u521d\u671f\u30d1\u30b9\u30ef\u30fc\u30c9\u78ba\u8a8d",
+  affiliation: "\u6240\u5c5e\uff08\u62e0\u70b9\uff09",
+  multiBranchHint: "\u8907\u6570\u62e0\u70b9\u3092\u517c\u4efb\u3059\u308b\u5834\u5408\u306f\u3001\u8907\u6570\u9078\u629e\u3067\u304d\u307e\u3059\u3002",
+  role: "\u6a29\u9650",
+  notes: "\u5099\u8003",
+  saving: "\u4fdd\u5b58\u4e2d...",
+  saveEmployee: "\u793e\u54e1\u60c5\u5831\u3092\u4fdd\u5b58",
+  addEmployee: "\u793e\u54e1\u3092\u8ffd\u52a0",
+  cancelEdit: "\u7de8\u96c6\u3092\u30ad\u30e3\u30f3\u30bb\u30eb",
+  list: "\u793e\u54e1\u4e00\u89a7",
+  loading: "\u8aad\u307f\u8fbc\u307f\u4e2d...",
+  searchPlaceholder: "\u6c0f\u540d\u30fb\u30e1\u30fc\u30eb\u30fb\u6240\u5c5e\u3067\u691c\u7d22",
+  searchLabel: "\u793e\u54e1\u691c\u7d22",
+  status: "\u72b6\u614b",
+  createdAt: "\u767b\u9332\u65e5",
+  actions: "\u64cd\u4f5c",
+  active: "\u6709\u52b9",
+  inactive: "\u7121\u52b9",
+  edit: "\u7de8\u96c6",
+  reset: "\u518d\u8a2d\u5b9a",
+  disable: "\u7121\u52b9\u5316",
+  enable: "\u6709\u52b9\u5316",
+  noUsers: "\u793e\u54e1\u30a2\u30ab\u30a6\u30f3\u30c8\u304c\u3042\u308a\u307e\u305b\u3093\u3002"
+};
+
 const emptyForm: CreateUserAccountInput = {
   name: "",
   email: "",
@@ -21,18 +59,12 @@ const emptyForm: CreateUserAccountInput = {
   department: "",
   branchId: "",
   branchIds: [],
-  role: "driver",
+  role: "staff",
   notes: ""
 };
 
-function roleLabel(role: AuthRole) {
-  if (role === "admin") return "管理者";
-  if (role === "office") return "企画部";
-  return "ドライバー";
-}
-
 function statusLabel(status: UserAccount["status"]) {
-  return status === "active" ? "有効" : "無効";
+  return status === "active" ? labels.active : labels.inactive;
 }
 
 function formatDate(value: string) {
@@ -63,7 +95,7 @@ export default function UserAdmin({ embedded = false }: { embedded?: boolean }) 
     return branchIds
       .map((branchId) => branches.find((branch) => branch.id === branchId)?.name || branchId)
       .filter(Boolean)
-      .join("、");
+      .join("\u3001");
   }
 
   function updateFormBranchIds(branchIds: string[]) {
@@ -83,7 +115,7 @@ export default function UserAdmin({ embedded = false }: { embedded?: boolean }) 
       setUsers(await getUserAccounts());
     } catch (error) {
       console.error("[UserAdmin] Failed to load users.", error);
-      setError(error instanceof Error ? error.message : "社員一覧を読み込めませんでした。");
+      setError(error instanceof Error ? error.message : "\u793e\u54e1\u4e00\u89a7\u3092\u8aad\u307f\u8fbc\u3081\u307e\u305b\u3093\u3067\u3057\u305f\u3002");
     } finally {
       setLoading(false);
     }
@@ -126,7 +158,7 @@ export default function UserAdmin({ embedded = false }: { embedded?: boolean }) 
           notes: form.notes
         });
         setUsers((current) => current.map((user) => (user.uid === updated.uid ? updated : user)));
-        setMessage("社員情報を更新しました。");
+        setMessage("\u793e\u54e1\u60c5\u5831\u3092\u66f4\u65b0\u3057\u307e\u3057\u305f\u3002");
       } else {
         const created = await createUserAccount({
           ...form,
@@ -135,13 +167,13 @@ export default function UserAdmin({ embedded = false }: { embedded?: boolean }) 
           branchIds: selectedBranchIds
         });
         setUsers((current) => [created, ...current.filter((user) => user.uid !== created.uid)]);
-        setMessage("社員アカウントを登録しました。");
+        setMessage("\u793e\u54e1\u30a2\u30ab\u30a6\u30f3\u30c8\u3092\u767b\u9332\u3057\u307e\u3057\u305f\u3002");
       }
       setForm(emptyForm);
       setEditingUid("");
     } catch (error) {
       console.error("[UserAdmin] Save user failed.", error);
-      setError(error instanceof Error ? error.message : "社員アカウントを保存できませんでした。");
+      setError(error instanceof Error ? error.message : "\u793e\u54e1\u30a2\u30ab\u30a6\u30f3\u30c8\u3092\u4fdd\u5b58\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f\u3002");
     } finally {
       setSaving(false);
     }
@@ -174,30 +206,30 @@ export default function UserAdmin({ embedded = false }: { embedded?: boolean }) 
 
   async function changeStatus(user: UserAccount) {
     const nextStatus = user.status === "active" ? "inactive" : "active";
-    const label = nextStatus === "inactive" ? "無効化" : "有効化";
-    if (!window.confirm(`${user.name}さんのアカウントを${label}しますか？`)) return;
+    const label = nextStatus === "inactive" ? labels.disable : labels.enable;
+    if (!window.confirm(`${user.name}\u3055\u3093\u306e\u30a2\u30ab\u30a6\u30f3\u30c8\u3092${label}\u3057\u307e\u3059\u304b\uff1f`)) return;
     setMessage("");
     setError("");
     try {
       const updated = await updateUserAccountStatus(user.uid, nextStatus);
       setUsers((current) => current.map((item) => (item.uid === updated.uid ? updated : item)));
-      setMessage(`アカウントを${label}しました。`);
+      setMessage(`\u30a2\u30ab\u30a6\u30f3\u30c8\u3092${label}\u3057\u307e\u3057\u305f\u3002`);
     } catch (error) {
       console.error("[UserAdmin] Status update failed.", error);
-      setError(error instanceof Error ? error.message : "アカウント状態を変更できませんでした。");
+      setError(error instanceof Error ? error.message : "\u30a2\u30ab\u30a6\u30f3\u30c8\u72b6\u614b\u3092\u5909\u66f4\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f\u3002");
     }
   }
 
   async function resetPassword(user: UserAccount) {
-    if (!window.confirm(`${user.email} へパスワード再設定メールを送信しますか？`)) return;
+    if (!window.confirm(`${user.email} \u3078\u30d1\u30b9\u30ef\u30fc\u30c9\u518d\u8a2d\u5b9a\u30e1\u30fc\u30eb\u3092\u9001\u4fe1\u3057\u307e\u3059\u304b\uff1f`)) return;
     setMessage("");
     setError("");
     try {
       await sendUserPasswordReset(user.email);
-      setMessage("パスワード再設定メールを送信しました。");
+      setMessage("\u30d1\u30b9\u30ef\u30fc\u30c9\u518d\u8a2d\u5b9a\u30e1\u30fc\u30eb\u3092\u9001\u4fe1\u3057\u307e\u3057\u305f\u3002");
     } catch (error) {
       console.error("[UserAdmin] Password reset failed.", error);
-      setError(error instanceof Error ? error.message : "パスワード再設定メールを送信できませんでした。");
+      setError(error instanceof Error ? error.message : "\u30d1\u30b9\u30ef\u30fc\u30c9\u518d\u8a2d\u5b9a\u30e1\u30fc\u30eb\u3092\u9001\u4fe1\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f\u3002");
     }
   }
 
@@ -208,67 +240,48 @@ export default function UserAdmin({ embedded = false }: { embedded?: boolean }) 
       {!embedded ? (
         <header className="admin-header">
           <div>
-            <p className="eyebrow">管理設定</p>
-            <h1>社員管理</h1>
-            <p className="small">LINE WORKSメールアドレスをログインIDとして使用します。</p>
+            <p className="eyebrow">{labels.settings}</p>
+            <h1>{labels.title}</h1>
+            <p className="small">{labels.description}</p>
           </div>
           <div className="toolbar">
             <AuthStatus />
-            <a className="button-link" href="/dashboard">
-              ダッシュボード
-            </a>
-            <a className="button-link" href="/admin/master">
-              マスター管理
-            </a>
+            <a className="button-link" href="/dashboard">{labels.dashboard}</a>
+            <a className="button-link" href="/admin/master">{labels.masterAdmin}</a>
           </div>
         </header>
       ) : null}
 
       <section className="user-admin-grid">
         <form className="user-admin-form" onSubmit={submit}>
-          <h2>{editingUid ? "社員情報を編集" : "新規社員追加"}</h2>
+          <h2>{editingUid ? labels.editEmployee : labels.newEmployee}</h2>
           <label>
-            氏名
+            {labels.name}
             <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
           </label>
           {editingUid ? (
-            <p className="small">ログインID: {form.email}</p>
+            <p className="small">{labels.loginId}: {form.email}</p>
           ) : (
             <>
               <label>
-                LINE WORKSメールアドレス
-                <input
-                  type="email"
-                  value={form.email}
-                  onChange={(event) => setForm({ ...form, email: event.target.value })}
-                  inputMode="email"
-                />
+                {labels.email}
+                <input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} inputMode="email" />
               </label>
               <div className="two-column-fields">
                 <label>
-                  初期パスワード
-                  <input
-                    type="password"
-                    value={form.password}
-                    onChange={(event) => setForm({ ...form, password: event.target.value })}
-                    autoComplete="new-password"
-                  />
+                  {labels.initialPassword}
+                  <input type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} autoComplete="new-password" />
                 </label>
                 <label>
-                  初期パスワード確認
-                  <input
-                    type="password"
-                    value={form.confirmPassword}
-                    onChange={(event) => setForm({ ...form, confirmPassword: event.target.value })}
-                    autoComplete="new-password"
-                  />
+                  {labels.confirmPassword}
+                  <input type="password" value={form.confirmPassword} onChange={(event) => setForm({ ...form, confirmPassword: event.target.value })} autoComplete="new-password" />
                 </label>
               </div>
             </>
           )}
           <div className="two-column-fields">
             <fieldset className="master-field">
-              <legend>所属（拠点）</legend>
+              <legend>{labels.affiliation}</legend>
               <div className="master-check-grid">
                 {enabledBranches.map((branch) => {
                   const selectedBranchIds = branchIdsFromValue(form);
@@ -291,43 +304,35 @@ export default function UserAdmin({ embedded = false }: { embedded?: boolean }) 
                   );
                 })}
               </div>
-              <p className="small">複数拠点を兼任する場合は、複数選択できます。</p>
+              <p className="small">{labels.multiBranchHint}</p>
             </fieldset>
             <label>
-              権限
+              {labels.role}
               <select value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value as AuthRole })}>
-                <option value="driver">ドライバー</option>
-                <option value="office">企画部</option>
-                <option value="admin">管理者</option>
+                <option value="staff">{userRoleLabel("staff")}</option>
+                <option value="manager">{userRoleLabel("manager")}</option>
+                <option value="planning">{userRoleLabel("planning")}</option>
+                <option value="master">{userRoleLabel("master")}</option>
               </select>
             </label>
           </div>
           <label>
-            備考
+            {labels.notes}
             <textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
           </label>
           <button className="primary" type="submit" disabled={saving}>
-            {saving ? "保存中..." : editingUid ? "社員情報を保存" : "社員を追加"}
+            {saving ? labels.saving : editingUid ? labels.saveEmployee : labels.addEmployee}
           </button>
-          {editingUid ? (
-            <button type="button" onClick={cancelEdit}>
-              編集をキャンセル
-            </button>
-          ) : null}
+          {editingUid ? <button type="button" onClick={cancelEdit}>{labels.cancelEdit}</button> : null}
         </form>
 
         <section className="user-admin-list">
           <div className="user-admin-list-header">
             <div>
-              <h2>社員一覧</h2>
-              <p className="small">{loading ? "読み込み中..." : `${filteredUsers.length}件表示`}</p>
+              <h2>{labels.list}</h2>
+              <p className="small">{loading ? labels.loading : `${filteredUsers.length}\u4ef6\u8868\u793a`}</p>
             </div>
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="氏名・メール・所属で検索"
-              aria-label="社員検索"
-            />
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={labels.searchPlaceholder} aria-label={labels.searchLabel} />
           </div>
           {message ? <p className="send-status success">{message}</p> : null}
           {error ? <p className="send-status error">{error}</p> : null}
@@ -335,13 +340,13 @@ export default function UserAdmin({ embedded = false }: { embedded?: boolean }) 
             <table className="admin-table compact">
               <thead>
                 <tr>
-                  <th>氏名</th>
-                  <th>LINE WORKSメール</th>
-                  <th>所属（拠点）</th>
-                  <th>権限</th>
-                  <th>状態</th>
-                  <th>登録日</th>
-                  <th>操作</th>
+                  <th>{labels.name}</th>
+                  <th>{labels.email}</th>
+                  <th>{labels.affiliation}</th>
+                  <th>{labels.role}</th>
+                  <th>{labels.status}</th>
+                  <th>{labels.createdAt}</th>
+                  <th>{labels.actions}</th>
                 </tr>
               </thead>
               <tbody>
@@ -351,25 +356,15 @@ export default function UserAdmin({ embedded = false }: { embedded?: boolean }) 
                       <td>{user.name}</td>
                       <td>{user.email}</td>
                       <td>{branchNameText(branchIdsFromValue(user)) || user.department || "-"}</td>
-                      <td>{roleLabel(user.role)}</td>
-                      <td>
-                        <span className="status-chip">{statusLabel(user.status)}</span>
-                      </td>
+                      <td>{userRoleLabel(user.role)}</td>
+                      <td><span className="status-chip">{statusLabel(user.status)}</span></td>
                       <td>{formatDate(user.createdAt)}</td>
                       <td>
                         <div className="table-actions compact-actions">
-                          <button type="button" onClick={() => startEdit(user)}>
-                            編集
-                          </button>
-                          <button type="button" onClick={() => resetPassword(user)}>
-                            再設定
-                          </button>
-                          <button
-                            type="button"
-                            className={user.status === "active" ? "danger-button" : ""}
-                            onClick={() => changeStatus(user)}
-                          >
-                            {user.status === "active" ? "無効化" : "有効化"}
+                          <button type="button" onClick={() => startEdit(user)}>{labels.edit}</button>
+                          <button type="button" onClick={() => resetPassword(user)}>{labels.reset}</button>
+                          <button type="button" className={user.status === "active" ? "danger-button" : ""} onClick={() => changeStatus(user)}>
+                            {user.status === "active" ? labels.disable : labels.enable}
                           </button>
                         </div>
                       </td>
@@ -377,7 +372,7 @@ export default function UserAdmin({ embedded = false }: { embedded?: boolean }) 
                   ))
                 ) : (
                   <tr className="empty-state">
-                    <td colSpan={7}>社員アカウントがありません。</td>
+                    <td colSpan={7}>{labels.noUsers}</td>
                   </tr>
                 )}
               </tbody>

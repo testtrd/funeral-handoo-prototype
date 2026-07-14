@@ -4,6 +4,7 @@ import { CheckCircle, Eye, Pencil, Play, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AuthStatus } from "@/components/AuthGate";
 import { SyncStatusBanner } from "@/components/SyncStatusBanner";
+import { canEditCase, canManageMasters, canViewAllCases, canViewCase } from "@/lib/accessControl";
 import { getCurrentUser, type AuthSession } from "@/lib/authService";
 import { getHandoffRecords, nextActionForRecord, openHandoffForEditing, progressPercentForStatus, saveHandoffRecord, subscribeHandoffRecords, syncStatusLabel, type HandoffRecord, type HandoffRecordStatus } from "@/lib/handoffStorage";
 
@@ -53,8 +54,7 @@ function isInUserBranch(record: HandoffRecord, user: AuthSession) {
 }
 
 function canOperateRecord(record: HandoffRecord, user: AuthSession) {
-  if (user.role !== "driver") return true;
-  return (isInUserBranch(record, user) || isAssignedToUser(record, user)) && driverOperableStatuses.includes(record.status);
+  return canEditCase(user, record) && driverOperableStatuses.includes(record.status);
 }
 
 function inferResumeStep(record: HandoffRecord) {
@@ -81,12 +81,8 @@ export default function DriverDashboard() {
 
   const visibleRecords = useMemo(() => {
     if (!user) return [];
-    if (user.role === "admin") return records;
-    const branchIds = userBranchIds(user);
-    if (branchIds.length) {
-      return records.filter((record) => branchIds.includes(record.branchId));
-    }
-    return records.filter((record) => isAssignedToUser(record, user));
+    if (canViewAllCases(user)) return records;
+    return records.filter((record) => canViewCase(user, record) || isAssignedToUser(record, user));
   }, [records, user]);
 
   const activeRecords = visibleRecords.filter((record) => driverOperableStatuses.includes(record.status) && record.status !== "現場入力完了");
@@ -125,8 +121,8 @@ export default function DriverDashboard() {
           <AuthStatus />
           <button onClick={loadRecords}><RefreshCw size={18} /> 更新</button>
           <a className="button-link primary" href="/">新規作成</a>
-          {user?.role !== "driver" ? <a className="button-link" href="/admin">管理画面</a> : null}
-          {user?.role === "admin" ? <a className="button-link" href="/admin/master">マスター管理</a> : null}
+          <a className="button-link" href="/admin">管理画面</a>
+          {canManageMasters(user) ? <a className="button-link" href="/admin/master">マスター管理</a> : null}
         </div>
       </header>
       <SyncStatusBanner />
@@ -238,7 +234,7 @@ export default function DriverDashboard() {
                 <CheckCircle size={18} /> 現場入力完了にする
               </button>
             </div>
-            {user?.role === "driver" ? (
+            {user?.role === "staff" ? (
               <p className="small">業者控えPDF、社内控えPDFの保存・印刷・共有、JSON出力、マスター管理は管理画面側で行います。</p>
             ) : (
               <p className="small">管理処理は管理画面の案件詳細から行えます。</p>

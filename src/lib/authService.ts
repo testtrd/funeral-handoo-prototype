@@ -9,7 +9,7 @@ import {
 import { safeJsonParse } from "@/lib/safeJson";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 
-export type AuthRole = "admin" | "driver" | "office";
+export type AuthRole = "master" | "planning" | "manager" | "staff";
 
 export type AuthUser = {
   userId: string;
@@ -27,9 +27,9 @@ export type AuthSession = AuthUser & {
 const authSessionKey = "funeral-handoff-auth-session-v1";
 
 const prototypeUsers: Array<AuthUser & { password: string }> = [
-  { userId: "admin", name: "管理者", password: "admin-pass", role: "admin" },
-  { userId: "driver01", name: "ドライバー01", password: "driver-pass", role: "driver", branchId: "head_office" },
-  { userId: "office01", name: "企画部01", password: "office-pass", role: "office", branchId: "head_office" }
+  { userId: "admin", name: "\u7ba1\u7406\u8005", password: "admin-pass", role: "master" },
+  { userId: "driver01", name: "\u30c9\u30e9\u30a4\u30d0\u30fc01", password: "driver-pass", role: "staff", branchId: "head_office", branchIds: ["head_office"] },
+  { userId: "office01", name: "\u4f01\u753b\u90e801", password: "office-pass", role: "planning", branchId: "head_office", branchIds: ["head_office"] }
 ];
 
 export function getPrototypeUsers(): AuthUser[] {
@@ -51,28 +51,40 @@ function initialAdminEmails() {
     .filter(Boolean);
 }
 
-function isValidRole(value: unknown): value is AuthRole {
-  return value === "admin" || value === "driver" || value === "office";
+export function normalizeAuthRole(value: unknown): AuthRole {
+  if (value === "master" || value === "planning" || value === "manager" || value === "staff") return value;
+  if (value === "admin") return "master";
+  if (value === "office") return "planning";
+  if (value === "driver") return "staff";
+  return "staff";
+}
+
+function normalizedBranchIds(branchId?: unknown, branchIds?: unknown) {
+  if (Array.isArray(branchIds) && branchIds.length) {
+    return branchIds.map((value) => String(value || "").trim()).filter(Boolean);
+  }
+  const id = String(branchId || "").trim();
+  return id ? [id] : [];
 }
 
 function firebaseLoginErrorMessage(error: unknown) {
   const code = typeof error === "object" && error && "code" in error ? String((error as { code?: string }).code || "") : "";
-  if (code === "auth/user-disabled") return "このアカウントは利用できません。";
+  if (code === "auth/user-disabled") return "\u3053\u306e\u30a2\u30ab\u30a6\u30f3\u30c8\u306f\u5229\u7528\u3067\u304d\u307e\u305b\u3093\u3002";
   if (
     code === "auth/invalid-credential" ||
     code === "auth/user-not-found" ||
     code === "auth/wrong-password" ||
     code === "auth/invalid-email"
   ) {
-    return "メールアドレスまたはパスワードが違います。";
+    return "\u30e1\u30fc\u30eb\u30a2\u30c9\u30ec\u30b9\u307e\u305f\u306f\u30d1\u30b9\u30ef\u30fc\u30c9\u304c\u9055\u3044\u307e\u3059\u3002";
   }
   console.error("[Auth] Firebase login failed.", error);
-  return "通信エラーが発生しました。時間をおいて再度お試しください。";
+  return "\u901a\u4fe1\u30a8\u30e9\u30fc\u304c\u767a\u751f\u3057\u307e\u3057\u305f\u3002\u6642\u9593\u3092\u304a\u3044\u3066\u518d\u5ea6\u304a\u8a66\u3057\u304f\u3060\u3055\u3044\u3002";
 }
 
 async function readOrBootstrapUserProfile(uid: string, email: string, fallbackName: string) {
   const db = getFirebaseDb();
-  const defaultRole: AuthRole = initialAdminEmails().includes(email) ? "admin" : "driver";
+  const defaultRole: AuthRole = initialAdminEmails().includes(email) ? "master" : "staff";
   if (!db) {
     return {
       uid,
@@ -99,9 +111,9 @@ async function readOrBootstrapUserProfile(uid: string, email: string, fallbackNa
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
-    if (defaultRole === "admin") {
+    if (defaultRole === "master") {
       await setDoc(userRef, profile, { merge: true }).catch((error) => {
-        console.warn("[Auth] Initial admin profile could not be saved. Login will continue.", error);
+        console.warn("[Auth] Initial master profile could not be saved. Login will continue.", error);
       });
     }
     return profile;
@@ -121,12 +133,13 @@ async function readOrBootstrapUserProfile(uid: string, email: string, fallbackNa
 function prototypeLogin(userId: string, password: string): AuthSession | null {
   const user = prototypeUsers.find((item) => item.userId === userId && item.password === password);
   if (!user) return null;
+  const branchIds = normalizedBranchIds(user.branchId, user.branchIds);
   const session: AuthSession = {
     userId: user.userId,
     name: user.name,
-    role: user.role,
-    branchId: user.branchId,
-    branchIds: user.branchIds || (user.branchId ? [user.branchId] : []),
+    role: normalizeAuthRole(user.role),
+    branchId: user.branchId || branchIds[0] || "",
+    branchIds,
     loggedInAt: new Date().toISOString()
   };
   window.localStorage.setItem(authSessionKey, JSON.stringify(session));
@@ -134,11 +147,11 @@ function prototypeLogin(userId: string, password: string): AuthSession | null {
 }
 
 export async function login(userId: string, password: string): Promise<{ session: AuthSession | null; error?: string }> {
-  if (!canUseStorage()) return { session: null, error: "通信エラーが発生しました。" };
+  if (!canUseStorage()) return { session: null, error: "\u901a\u4fe1\u30a8\u30e9\u30fc\u304c\u767a\u751f\u3057\u307e\u3057\u305f\u3002" };
 
   if (!isFirebaseConfigured()) {
     const session = prototypeLogin(userId.trim(), password);
-    return session ? { session } : { session: null, error: "メールアドレスまたはパスワードが違います。" };
+    return session ? { session } : { session: null, error: "\u30e1\u30fc\u30eb\u30a2\u30c9\u30ec\u30b9\u307e\u305f\u306f\u30d1\u30b9\u30ef\u30fc\u30c9\u304c\u9055\u3044\u307e\u3059\u3002" };
   }
 
   const email = normalizeEmail(userId);
@@ -152,20 +165,15 @@ export async function login(userId: string, password: string): Promise<{ session
 
     if (profile.status === "inactive") {
       await signOutFirebase().catch(() => undefined);
-      return { session: null, error: "このアカウントは利用できません。" };
+      return { session: null, error: "\u3053\u306e\u30a2\u30ab\u30a6\u30f3\u30c8\u306f\u5229\u7528\u3067\u304d\u307e\u305b\u3093\u3002" };
     }
 
-    const role = isValidRole(profile.role) ? profile.role : "driver";
-    const branchIds = Array.isArray(profile.branchIds)
-      ? profile.branchIds.map((value) => String(value || "").trim()).filter(Boolean)
-      : profile.branchId
-        ? [String(profile.branchId)]
-        : [];
+    const branchIds = normalizedBranchIds(profile.branchId, profile.branchIds);
     const session: AuthSession = {
       userId: credential.user.uid,
       name: profile.name || credential.user.displayName || profile.email || email,
       email: profile.email || email,
-      role,
+      role: normalizeAuthRole(profile.role),
       branchId: profile.branchId || branchIds[0] || "",
       branchIds,
       loggedInAt: new Date().toISOString()
@@ -185,7 +193,7 @@ export async function logout() {
 
 export async function sendPasswordReset(email: string) {
   const normalized = normalizeEmail(email);
-  if (!normalized) throw new Error("メールアドレスを入力してください。");
+  if (!normalized) throw new Error("\u30e1\u30fc\u30eb\u30a2\u30c9\u30ec\u30b9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002");
   await sendFirebasePasswordReset(normalized);
 }
 
@@ -200,7 +208,13 @@ export function getCurrentUser(): AuthSession | null {
     window.localStorage.removeItem(authSessionKey);
     return null;
   }
-  return session;
+  const branchIds = normalizedBranchIds(session.branchId, session.branchIds);
+  return {
+    ...session,
+    role: normalizeAuthRole(session.role),
+    branchId: session.branchId || branchIds[0] || "",
+    branchIds
+  };
 }
 
 export function isAuthenticated() {
@@ -224,8 +238,8 @@ export function getDefaultPathForRole(_role: AuthRole) {
 
 export function canAccessPath(user: AuthUser, path: string) {
   if (path.startsWith("/login")) return true;
-  if (path.startsWith("/admin/master")) return user.role === "admin";
-  if (path.startsWith("/admin/users")) return user.role === "admin";
+  if (path.startsWith("/admin/master")) return user.role === "master";
+  if (path.startsWith("/admin/users")) return user.role === "master";
   if (path.startsWith("/admin")) return true;
   if (path.startsWith("/dashboard")) return true;
   if (path.startsWith("/driver")) return true;

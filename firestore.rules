@@ -6,20 +6,67 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isAdmin() {
-      return signedIn()
-        && request.auth.token.role == "admin"
-        && request.auth.token.status != "inactive";
+    function role() {
+      return signedIn() ? request.auth.token.role : null;
+    }
+
+    function active() {
+      return signedIn() && request.auth.token.status != "inactive";
+    }
+
+    function isMaster() {
+      return active() && (role() == "master" || role() == "admin" || request.auth.token.admin == true);
+    }
+
+    function isPlanning() {
+      return active() && (role() == "planning" || role() == "office");
+    }
+
+    function isManager() {
+      return active() && role() == "manager";
+    }
+
+    function isStaff() {
+      return active() && (role() == "staff" || role() == "driver");
+    }
+
+    function userBranchIds() {
+      return request.auth.token.branchIds is list
+        ? request.auth.token.branchIds
+        : request.auth.token.branchId is string
+          ? [request.auth.token.branchId]
+          : [];
+    }
+
+    function inOwnBranch(branchId) {
+      return branchId is string && userBranchIds().hasAny([branchId]);
+    }
+
+    function canViewCase(data) {
+      return isMaster() || isPlanning() || isManager() || (isStaff() && inOwnBranch(data.branchId));
+    }
+
+    function canWriteCase(existingData, nextData) {
+      return isMaster()
+        || isPlanning()
+        || ((isManager() || isStaff()) && inOwnBranch(existingData.branchId) && nextData.branchId == existingData.branchId);
     }
 
     match /handoffRecords/{recordId} {
-      allow read, create, update, delete: if signedIn();
+      allow read: if active() && canViewCase(resource.data);
+      allow create: if active() && (
+        isMaster()
+        || isPlanning()
+        || ((isManager() || isStaff()) && inOwnBranch(request.resource.data.branchId))
+      );
+      allow update: if active() && canWriteCase(resource.data, request.resource.data);
+      allow delete: if isMaster();
     }
 
     match /users/{userId} {
-      allow get: if signedIn() && (request.auth.uid == userId || isAdmin());
-      allow list: if isAdmin();
-      allow create, update: if isAdmin();
+      allow get: if active() && (request.auth.uid == userId || isMaster());
+      allow list: if isMaster();
+      allow create, update: if isMaster();
       allow delete: if false;
     }
 

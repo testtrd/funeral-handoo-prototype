@@ -3,7 +3,7 @@ import { ReportPreview } from "@/components/ReportPreview";
 
 export default function ReportPreviewPage() {
   return (
-    <AuthGate allowedRoles={["admin", "office", "driver"]}>
+    <AuthGate allowedRoles={["master", "planning", "manager", "staff"]}>
       <ReportPreview />
     </AuthGate>
   );

@@ -5,7 +5,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AuthStatus } from "@/components/AuthGate";
 import { InternalStorageReport, PaperReport, RelativeCopyReport } from "@/components/HandoffApp";
 import { SyncStatusBanner } from "@/components/SyncStatusBanner";
-import { getCurrentUser } from "@/lib/authService";
+import { canDeleteCase, canEditCase, canManageMasters, canViewAllCases, canViewCase } from "@/lib/accessControl";
+import { getCurrentUser, type AuthSession } from "@/lib/authService";
 import { createElementPdfBlob, downloadElementAsPdf, sanitizeFileName } from "@/lib/downloadService";
 import { familyCopyDeliveryText } from "@/lib/familyCopyDeliveryService";
 import {
@@ -99,6 +100,7 @@ export default function AdminDashboard() {
   const [selectedRecordIds, setSelectedRecordIds] = useState<string[]>([]);
   const [filters, setFilters] = useState({ branch: "", vendor: "", date: "", keyword: "", reservation: "", status: "" });
   const [role, setRole] = useState("");
+  const [currentUser, setCurrentUser] = useState<AuthSession | null>(null);
   const [printReport, setPrintReport] = useState<"vendor" | "internal">("internal");
   const [printJobs, setPrintJobs] = useState<Array<{ record: HandoffRecord; type: "vendor" | "internal" }>>([]);
   const [pdfJob, setPdfJob] = useState<{ record: HandoffRecord; type: "relative" | "vendor" | "internal" } | null>(null);
@@ -123,18 +125,16 @@ export default function AdminDashboard() {
     const current = getCurrentUser();
     const allRecords = getHandoffRecords();
     setRole(current?.role || "");
+    setCurrentUser(current);
     if (!current) {
       setRecords([]);
       return;
     }
-    if (current.role === "admin") {
+    if (canViewAllCases(current)) {
       setRecords(allRecords);
       return;
     }
-    const branchIds = userBranchIds(current);
-    setRecords(allRecords.filter((record) => (
-      branchIds.length ? branchIds.includes(record.branchId) : isRelatedToUser(record, current.userId)
-    )));
+    setRecords(allRecords.filter((record) => canViewCase(current, record) || isRelatedToUser(record, current.userId)));
   }
 
   useEffect(() => {
@@ -148,7 +148,11 @@ export default function AdminDashboard() {
   }, []);
 
   const selected = records.find((record) => record.id === selectedId);
-  const isAdmin = role === "admin";
+  const isMaster = role === "master";
+  const isAdmin = isMaster;
+  const canViewAll = canViewAllCases(currentUser);
+  const canOpenMasterAdmin = canManageMasters(currentUser);
+  const selectedCanEdit = selected ? canEditCase(currentUser, selected) : false;
 
   useEffect(() => {
     if (!selected) return;
@@ -190,6 +194,10 @@ export default function AdminDashboard() {
 
   async function recreatePdf(record: HandoffRecord, type: "relative" | "vendor" | "internal") {
     try {
+      if (type !== "relative" && !canEditCase(currentUser, record)) {
+        alert("\u4ed6\u62e0\u70b9\u306e\u6848\u4ef6\u306e\u305f\u3081\u3001PDF\u4f5c\u6210\u72b6\u614b\u306e\u66f4\u65b0\u306f\u3067\u304d\u307e\u305b\u3093\u3002");
+        return;
+      }
       const now = new Date().toISOString();
       const fileName = type === "relative"
         ? `親族控え_${sanitizeFileName(record.deceasedName || "未入力")}_${dateStamp()}.pdf`
@@ -228,7 +236,12 @@ export default function AdminDashboard() {
       alert("操作する案件を選択してください。");
       return;
     }
-    for (const record of selectableRecords) {
+    const targets = type === "relative" ? selectableRecords : selectableRecords.filter((record) => canEditCase(currentUser, record));
+    if (!targets.length) {
+      alert("\u7de8\u96c6\u3067\u304d\u308b\u6848\u4ef6\u304c\u9078\u629e\u3055\u308c\u3066\u3044\u307e\u305b\u3093\u3002");
+      return;
+    }
+    for (const record of targets) {
       await recreatePdf(record, type);
     }
   }
@@ -245,7 +258,12 @@ export default function AdminDashboard() {
 
     try {
       const files: File[] = [];
-      for (const record of selectableRecords) {
+      const targets = selectableRecords.filter((record) => canEditCase(currentUser, record));
+      if (!targets.length) {
+        alert("\u7de8\u96c6\u3067\u304d\u308b\u6848\u4ef6\u304c\u9078\u629e\u3055\u308c\u3066\u3044\u307e\u305b\u3093\u3002");
+        return;
+      }
+      for (const record of targets) {
         const fileName = `業者控え_業務引継書_${sanitizeFileName(record.vendorName)}_${sanitizeFileName(record.deceasedName || "未入力")}_${dateStamp()}.pdf`;
         document.title = fileName.replace(/\.pdf$/i, "");
         const updated = saveHandoffRecord(record.data, { id: record.id, status: nextStatusForPdf(record, "vendor"), pdfGenerated: true });
@@ -359,12 +377,16 @@ export default function AdminDashboard() {
   }
 
   function editRecord(record: HandoffRecord) {
+    if (!canEditCase(currentUser, record)) {
+      alert("\u4ed6\u62e0\u70b9\u306e\u6848\u4ef6\u306e\u305f\u3081\u95b2\u89a7\u306e\u307f\u53ef\u80fd\u3067\u3059\u3002");
+      return;
+    }
     openHandoffForEditing(record, record.handoffProgress?.currentStep);
     window.location.href = "/";
   }
 
   function deleteRecord(record: HandoffRecord) {
-    if (!isAdmin) return;
+    if (!canDeleteCase(currentUser)) return;
     const targetName = record.deceasedName || record.mournerName || record.id;
     const ok = window.confirm(`この案件を削除します。\n\n対象：${targetName}\n\n削除後は元に戻せません。よろしいですか？`);
     if (!ok) return;
@@ -424,6 +446,10 @@ export default function AdminDashboard() {
   }
 
   function savePostWork(record: HandoffRecord) {
+    if (!canEditCase(currentUser, record)) {
+      alert("\u4ed6\u62e0\u70b9\u306e\u6848\u4ef6\u306e\u305f\u3081\u7de8\u96c6\u3067\u304d\u307e\u305b\u3093\u3002");
+      return;
+    }
     const nextData = buildPostWorkData(record);
     if (!nextData) return;
     const updated = saveHandoffRecord(nextData, { id: record.id, status: advanceStatus(record.status, "業務終了後入力済み"), pdfGenerated: record.pdf.generated });
@@ -433,6 +459,10 @@ export default function AdminDashboard() {
   }
 
   function completePostWork(record: HandoffRecord) {
+    if (!canEditCase(currentUser, record)) {
+      alert("\u4ed6\u62e0\u70b9\u306e\u6848\u4ef6\u306e\u305f\u3081\u7de8\u96c6\u3067\u304d\u307e\u305b\u3093\u3002");
+      return;
+    }
     const nextData = buildPostWorkData(record);
     if (!nextData) return;
     const updated = saveHandoffRecord(nextData, { id: record.id, status: "完了", pdfGenerated: record.pdf.generated });
@@ -442,6 +472,7 @@ export default function AdminDashboard() {
   }
 
   function markInternalCopyStored(record: HandoffRecord) {
+    if (!canEditCase(currentUser, record)) return;
     const now = new Date().toISOString();
     const nextData: HandoffData = {
       ...record.data,
@@ -465,6 +496,7 @@ export default function AdminDashboard() {
     selectedRecordIds.forEach((id) => {
       const record = currentRecords.find((item) => item.id === id);
       if (!record) return;
+      if (!canEditCase(currentUser, record)) return;
       const now = new Date().toISOString();
       const nextData: HandoffData = {
         ...record.data,
