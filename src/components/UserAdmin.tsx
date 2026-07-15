@@ -7,7 +7,7 @@ import { getAllBranches } from "@/lib/masterDataService";
 import {
   createUserAccount,
   getUserAccounts,
-  sendUserPasswordReset,
+  resetUserInitialPassword,
   updateUserAccount,
   updateUserAccountStatus
 } from "@/lib/userAccountService";
@@ -46,6 +46,10 @@ const labels = {
   inactive: "\u7121\u52b9",
   edit: "\u7de8\u96c6",
   reset: "\u518d\u8a2d\u5b9a",
+  resetInitialPassword: "初期パスワード再発行",
+  newInitialPassword: "新しい初期パスワード",
+  newInitialPasswordConfirm: "新しい初期パスワード確認",
+  resetPasswordButton: "初期パスワードを保存",
   disable: "\u7121\u52b9\u5316",
   enable: "\u6709\u52b9\u5316",
   noUsers: "\u793e\u54e1\u30a2\u30ab\u30a6\u30f3\u30c8\u304c\u3042\u308a\u307e\u305b\u3093\u3002"
@@ -83,6 +87,10 @@ export default function UserAdmin({ embedded = false }: { embedded?: boolean }) 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [resetTarget, setResetTarget] = useState<UserAccount | null>(null);
+  const [resetPasswordValue, setResetPasswordValue] = useState("");
+  const [resetPasswordConfirm, setResetPasswordConfirm] = useState("");
+  const [resetSaving, setResetSaving] = useState(false);
   const branches = useMemo(() => getAllBranches(), []);
   const enabledBranches = useMemo(() => branches.filter((branch) => branch.enabled), [branches]);
 
@@ -160,6 +168,15 @@ export default function UserAdmin({ embedded = false }: { embedded?: boolean }) 
         setUsers((current) => current.map((user) => (user.uid === updated.uid ? updated : user)));
         setMessage("\u793e\u54e1\u60c5\u5831\u3092\u66f4\u65b0\u3057\u307e\u3057\u305f\u3002");
       } else {
+        if (!form.password.trim()) {
+          throw new Error("初期パスワードを入力してください。");
+        }
+        if (form.password.length < 8) {
+          throw new Error("初期パスワードは8文字以上で入力してください。");
+        }
+        if (form.password !== form.confirmPassword) {
+          throw new Error("確認用パスワードが一致しません。");
+        }
         const created = await createUserAccount({
           ...form,
           department,
@@ -220,16 +237,47 @@ export default function UserAdmin({ embedded = false }: { embedded?: boolean }) 
     }
   }
 
-  async function resetPassword(user: UserAccount) {
-    if (!window.confirm(`${user.email} \u3078\u30d1\u30b9\u30ef\u30fc\u30c9\u518d\u8a2d\u5b9a\u30e1\u30fc\u30eb\u3092\u9001\u4fe1\u3057\u307e\u3059\u304b\uff1f`)) return;
+  function openPasswordReset(user: UserAccount) {
+    setResetTarget(user);
+    setResetPasswordValue("");
+    setResetPasswordConfirm("");
     setMessage("");
     setError("");
+  }
+
+  async function submitPasswordReset(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!resetTarget) return;
+    setMessage("");
+    setError("");
+    if (!resetPasswordValue.trim()) {
+      setError("初期パスワードを入力してください。");
+      return;
+    }
+    if (resetPasswordValue.length < 8) {
+      setError("初期パスワードは8文字以上で入力してください。");
+      return;
+    }
+    if (resetPasswordValue !== resetPasswordConfirm) {
+      setError("確認用パスワードが一致しません。");
+      return;
+    }
+    setResetSaving(true);
     try {
-      await sendUserPasswordReset(user.email);
-      setMessage("\u30d1\u30b9\u30ef\u30fc\u30c9\u518d\u8a2d\u5b9a\u30e1\u30fc\u30eb\u3092\u9001\u4fe1\u3057\u307e\u3057\u305f\u3002");
+      const updated = await resetUserInitialPassword(resetTarget.uid, {
+        password: resetPasswordValue,
+        confirmPassword: resetPasswordConfirm
+      });
+      setUsers((current) => current.map((user) => (user.uid === updated.uid ? updated : user)));
+      setResetTarget(null);
+      setResetPasswordValue("");
+      setResetPasswordConfirm("");
+      setMessage("初期パスワードを再発行しました。対象社員は次回ログイン時に新しいパスワード設定が必要です。");
     } catch (error) {
-      console.error("[UserAdmin] Password reset failed.", error);
-      setError(error instanceof Error ? error.message : "\u30d1\u30b9\u30ef\u30fc\u30c9\u518d\u8a2d\u5b9a\u30e1\u30fc\u30eb\u3092\u9001\u4fe1\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f\u3002");
+      console.error("[UserAdmin] Initial password reset failed.", error);
+      setError(error instanceof Error ? error.message : "初期パスワードを再発行できませんでした。");
+    } finally {
+      setResetSaving(false);
     }
   }
 
@@ -279,43 +327,41 @@ export default function UserAdmin({ embedded = false }: { embedded?: boolean }) 
               </div>
             </>
           )}
-          <div className="two-column-fields">
-            <fieldset className="master-field">
-              <legend>{labels.affiliation}</legend>
-              <div className="master-check-grid">
-                {enabledBranches.map((branch) => {
-                  const selectedBranchIds = branchIdsFromValue(form);
-                  const checked = selectedBranchIds.includes(branch.id);
-                  return (
-                    <label className="master-check" key={branch.id}>
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={(event) => {
-                          updateFormBranchIds(
-                            event.target.checked
-                              ? [...selectedBranchIds, branch.id]
-                              : selectedBranchIds.filter((branchId) => branchId !== branch.id)
-                          );
-                        }}
-                      />
-                      {branch.name}
-                    </label>
-                  );
-                })}
-              </div>
-              <p className="small">{labels.multiBranchHint}</p>
-            </fieldset>
-            <label>
-              {labels.role}
-              <select value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value as AuthRole })}>
-                <option value="staff">{userRoleLabel("staff")}</option>
-                <option value="manager">{userRoleLabel("manager")}</option>
-                <option value="planning">{userRoleLabel("planning")}</option>
-                <option value="master">{userRoleLabel("master")}</option>
-              </select>
-            </label>
-          </div>
+          <fieldset className="master-field user-branch-field">
+            <legend>{labels.affiliation}</legend>
+            <div className="master-check-grid user-branch-grid">
+              {enabledBranches.map((branch) => {
+                const selectedBranchIds = branchIdsFromValue(form);
+                const checked = selectedBranchIds.includes(branch.id);
+                return (
+                  <label className="master-check" key={branch.id}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(event) => {
+                        updateFormBranchIds(
+                          event.target.checked
+                            ? [...selectedBranchIds, branch.id]
+                            : selectedBranchIds.filter((branchId) => branchId !== branch.id)
+                        );
+                      }}
+                    />
+                    {branch.name}
+                  </label>
+                );
+              })}
+            </div>
+            <p className="small">{labels.multiBranchHint}</p>
+          </fieldset>
+          <label className="user-role-field">
+            {labels.role}
+            <select value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value as AuthRole })}>
+              <option value="staff">{userRoleLabel("staff")}</option>
+              <option value="manager">{userRoleLabel("manager")}</option>
+              <option value="planning">{userRoleLabel("planning")}</option>
+              <option value="master">{userRoleLabel("master")}</option>
+            </select>
+          </label>
           <label>
             {labels.notes}
             <textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
@@ -336,6 +382,26 @@ export default function UserAdmin({ embedded = false }: { embedded?: boolean }) 
           </div>
           {message ? <p className="send-status success">{message}</p> : null}
           {error ? <p className="send-status error">{error}</p> : null}
+          {resetTarget ? (
+            <form className="password-reset-panel" onSubmit={submitPasswordReset}>
+              <h3>{labels.resetInitialPassword}</h3>
+              <p className="small">{resetTarget.name} さんの初期パスワードを再発行します。パスワードはFirestoreへ保存されません。</p>
+              <div className="two-column-fields">
+                <label>
+                  {labels.newInitialPassword}
+                  <input type="password" value={resetPasswordValue} onChange={(event) => setResetPasswordValue(event.target.value)} autoComplete="new-password" />
+                </label>
+                <label>
+                  {labels.newInitialPasswordConfirm}
+                  <input type="password" value={resetPasswordConfirm} onChange={(event) => setResetPasswordConfirm(event.target.value)} autoComplete="new-password" />
+                </label>
+              </div>
+              <div className="toolbar">
+                <button className="primary" type="submit" disabled={resetSaving}>{resetSaving ? labels.saving : labels.resetPasswordButton}</button>
+                <button type="button" onClick={() => setResetTarget(null)}>キャンセル</button>
+              </div>
+            </form>
+          ) : null}
           <div className="admin-table-wrap">
             <table className="admin-table compact">
               <thead>
@@ -357,12 +423,15 @@ export default function UserAdmin({ embedded = false }: { embedded?: boolean }) 
                       <td>{user.email}</td>
                       <td>{branchNameText(branchIdsFromValue(user)) || user.department || "-"}</td>
                       <td>{userRoleLabel(user.role)}</td>
-                      <td><span className="status-chip">{statusLabel(user.status)}</span></td>
+                      <td>
+                        <span className="status-chip">{statusLabel(user.status)}</span>
+                        {user.mustChangePassword ? <span className="status-chip warning">初回変更待ち</span> : null}
+                      </td>
                       <td>{formatDate(user.createdAt)}</td>
                       <td>
                         <div className="table-actions compact-actions">
                           <button type="button" onClick={() => startEdit(user)}>{labels.edit}</button>
-                          <button type="button" onClick={() => resetPassword(user)}>{labels.reset}</button>
+                          <button type="button" onClick={() => openPasswordReset(user)}>{labels.reset}</button>
                           <button type="button" className={user.status === "active" ? "danger-button" : ""} onClick={() => changeStatus(user)}>
                             {user.status === "active" ? labels.disable : labels.enable}
                           </button>

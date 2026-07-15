@@ -2,7 +2,8 @@ import "server-only";
 
 import { normalizeAuthRole, type AuthRole } from "@/lib/authService";
 import { getFirebaseAdmin } from "@/lib/firebase-admin";
-import type { CreateUserAccountInput, UpdateUserAccountInput, UserAccount, UserAccountStatus } from "@/lib/userAccountTypes";
+import { FieldValue } from "firebase-admin/firestore";
+import type { CreateUserAccountInput, ResetUserPasswordInput, UpdateUserAccountInput, UserAccount, UserAccountStatus } from "@/lib/userAccountTypes";
 
 type FirestoreDoc = {
   id: string;
@@ -47,6 +48,16 @@ function stringArrayFromValue(value: unknown) {
     : [];
 }
 
+function timestampString(value: unknown, fallback: string) {
+  if (!value) return fallback;
+  if (typeof value === "string") return value;
+  if (typeof value === "object" && value && "toDate" in value && typeof (value as { toDate?: unknown }).toDate === "function") {
+    const date = (value as { toDate: () => Date }).toDate();
+    return Number.isNaN(date.getTime()) ? fallback : date.toISOString();
+  }
+  return String(value);
+}
+
 function userFromDoc(doc: FirestoreDoc): UserAccount {
   const data = doc.data() || {};
   const now = new Date().toISOString();
@@ -61,9 +72,10 @@ function userFromDoc(doc: FirestoreDoc): UserAccount {
     branchIds: branchIds.length ? branchIds : branchId ? [branchId] : [],
     role: roleFromValue(data.role),
     status: statusFromValue(data.status),
+    mustChangePassword: data.mustChangePassword === true,
     notes: String(data.notes || ""),
-    createdAt: String(data.createdAt || now),
-    updatedAt: String(data.updatedAt || now)
+    createdAt: timestampString(data.createdAt, now),
+    updatedAt: timestampString(data.updatedAt, now)
   };
 }
 
@@ -76,7 +88,7 @@ function validateCreateInput(input: CreateUserAccountInput) {
   if (!name) throw new Error("氏名を入力してください。");
   if (!email) throw new Error("LINE WORKSメールアドレスを入力してください。");
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("メールアドレスの形式を確認してください。");
-  if (password.length < 6) throw new Error("初期パスワードは6文字以上で入力してください。");
+  if (password.length < 8) throw new Error("初期パスワードは8文字以上で入力してください。");
   if (password !== confirmPassword) throw new Error("初期パスワードと確認用パスワードが一致しません。");
 
   const branchIds = stringArrayFromValue(input.branchIds);
@@ -109,6 +121,15 @@ function validateUpdateInput(input: UpdateUserAccountInput) {
     branchIds: branchIds.length ? branchIds : branchId ? [branchId] : [],
     notes: input.notes?.trim() || ""
   };
+}
+
+function validateInitialPassword(input: ResetUserPasswordInput) {
+  const password = input.password;
+  const confirmPassword = input.confirmPassword;
+  if (!password || !password.trim()) throw new Error("初期パスワードを入力してください。");
+  if (password.length < 8) throw new Error("初期パスワードは8文字以上で入力してください。");
+  if (password !== confirmPassword) throw new Error("確認用パスワードが一致しません。");
+  return password;
 }
 
 function claimsAreMaster(decoded: DecodedToken) {
@@ -180,6 +201,9 @@ export async function requireAdminUser(request: Request) {
   const initialAdmin = Boolean(email && configuredAdminEmails.includes(email));
   const profileResult = await findUserProfile(db, decoded.uid, email);
   const profile = profileResult.profile;
+  if (profile?.mustChangePassword === true) {
+    throw new Error("初回パスワード設定が完了するまで、この操作は利用できません。");
+  }
   const customClaimAdmin = claimsAreMaster(decoded);
   const firestoreProfileAdmin = profileIsMaster(profile);
   const uidDocMatched = profileResult.source === "uid";
@@ -275,6 +299,7 @@ export async function createEmployeeAccount(request: Request, input: CreateUserA
       role: normalized.role,
       status: "active",
       notes: normalized.notes,
+      mustChangePassword: true,
       createdAt: now,
       updatedAt: now
     };
@@ -308,6 +333,47 @@ export async function setEmployeeAccountStatus(request: Request, uid: string, st
   await userRef.update({ status, updatedAt: now });
   const updated = await userRef.get();
   return userFromDoc(updated);
+}
+
+export async function resetEmployeePassword(request: Request, uid: string, input: ResetUserPasswordInput): Promise<UserAccount> {
+  const { auth, db } = await requireAdminUser(request);
+  if (!uid) throw new Error("対象社員を確認できません。");
+  const password = validateInitialPassword(input);
+  const userRef = db.collection("users").doc(uid);
+  const current = await userRef.get();
+  if (!current.exists) throw new Error("対象社員が見つかりません。");
+
+  await auth.updateUser(uid, { password });
+  await auth.revokeRefreshTokens(uid).catch((error: unknown) => {
+    console.warn("[Firebase Admin] Failed to revoke employee refresh tokens.", { uidSuffix: safeSuffix(uid), error });
+  });
+  await userRef.set(
+    {
+      mustChangePassword: true,
+      updatedAt: FieldValue.serverTimestamp()
+    },
+    { merge: true }
+  );
+  const updated = await userRef.get();
+  return userFromDoc(updated);
+}
+
+export async function completeOwnPasswordChange(request: Request) {
+  const header = request.headers.get("authorization") || "";
+  const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
+  if (!token) throw new Error("ログイン状態を確認できません。もう一度ログインしてください。");
+
+  const { auth, db } = getFirebaseAdmin();
+  const decoded = await auth.verifyIdToken(token);
+  const userRef = db.collection("users").doc(decoded.uid);
+  await userRef.set(
+    {
+      mustChangePassword: false,
+      passwordChangedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp()
+    },
+    { merge: true }
+  );
 }
 
 export async function updateEmployeeAccount(request: Request, uid: string, input: UpdateUserAccountInput): Promise<UserAccount> {

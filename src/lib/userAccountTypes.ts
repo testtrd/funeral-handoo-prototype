@@ -11,6 +11,7 @@ export type UserAccount = {
   branchIds?: string[];
   role: AuthRole;
   status: UserAccountStatus;
+  mustChangePassword?: boolean;
   notes?: string;
   createdAt: string;
   updatedAt: string;
@@ -26,6 +27,11 @@ export type CreateUserAccountInput = {
   branchIds?: string[];
   role: AuthRole;
   notes?: string;
+};
+
+export type ResetUserPasswordInput = {
+  password: string;
+  confirmPassword: string;
 };
 
 export type UpdateUserAccountInput = {

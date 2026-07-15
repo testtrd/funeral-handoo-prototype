@@ -1,5 +1,6 @@
 import {
   getFirebaseAuth,
+  getFirebaseCurrentUserIdToken,
   getFirebaseDb,
   isFirebaseConfigured,
   sendFirebasePasswordReset,
@@ -18,6 +19,7 @@ export type AuthUser = {
   branchId?: string;
   branchIds?: string[];
   email?: string;
+  mustChangePassword?: boolean;
 };
 
 export type AuthSession = AuthUser & {
@@ -92,6 +94,7 @@ async function readOrBootstrapUserProfile(uid: string, email: string, fallbackNa
       email,
       role: defaultRole,
       status: "active",
+      mustChangePassword: false,
       branchId: "",
       branchIds: []
     };
@@ -106,6 +109,7 @@ async function readOrBootstrapUserProfile(uid: string, email: string, fallbackNa
       email,
       role: defaultRole,
       status: "active",
+      mustChangePassword: false,
       branchId: "",
       branchIds: [],
       createdAt: new Date().toISOString(),
@@ -125,6 +129,7 @@ async function readOrBootstrapUserProfile(uid: string, email: string, fallbackNa
     email?: string;
     role?: unknown;
     status?: string;
+    mustChangePassword?: boolean;
     branchId?: string;
     branchIds?: unknown;
   };
@@ -138,6 +143,7 @@ function prototypeLogin(userId: string, password: string): AuthSession | null {
     userId: user.userId,
     name: user.name,
     role: normalizeAuthRole(user.role),
+    mustChangePassword: false,
     branchId: user.branchId || branchIds[0] || "",
     branchIds,
     loggedInAt: new Date().toISOString()
@@ -174,6 +180,7 @@ export async function login(userId: string, password: string): Promise<{ session
       name: profile.name || credential.user.displayName || profile.email || email,
       email: profile.email || email,
       role: normalizeAuthRole(profile.role),
+      mustChangePassword: profile.mustChangePassword === true,
       branchId: profile.branchId || branchIds[0] || "",
       branchIds,
       loggedInAt: new Date().toISOString()
@@ -212,9 +219,74 @@ export function getCurrentUser(): AuthSession | null {
   return {
     ...session,
     role: normalizeAuthRole(session.role),
+    mustChangePassword: session.mustChangePassword === true,
     branchId: session.branchId || branchIds[0] || "",
     branchIds
   };
+}
+
+export async function refreshCurrentUserProfile(): Promise<AuthSession | null> {
+  if (!canUseStorage()) return null;
+  const current = getCurrentUser();
+  const db = getFirebaseDb();
+  if (!current || !db || !isFirebaseConfigured()) return current;
+  try {
+    const userRef = doc(db, "users", current.userId);
+    const snapshot = await getDoc(userRef);
+    if (!snapshot.exists()) return current;
+    const profile = snapshot.data() as {
+      name?: string;
+      email?: string;
+      role?: unknown;
+      status?: string;
+      branchId?: string;
+      branchIds?: unknown;
+      mustChangePassword?: boolean;
+    };
+    if (profile.status === "inactive") {
+      await logout();
+      return null;
+    }
+    const branchIds = normalizedBranchIds(profile.branchId, profile.branchIds);
+    const nextSession: AuthSession = {
+      ...current,
+      name: profile.name || current.name,
+      email: profile.email || current.email,
+      role: normalizeAuthRole(profile.role || current.role),
+      branchId: profile.branchId || branchIds[0] || current.branchId || "",
+      branchIds: branchIds.length ? branchIds : current.branchIds || [],
+      mustChangePassword: profile.mustChangePassword === true
+    };
+    window.localStorage.setItem(authSessionKey, JSON.stringify(nextSession));
+    return nextSession;
+  } catch (error) {
+    console.warn("[Auth] Failed to refresh current user profile.", error);
+    return current;
+  }
+}
+
+export async function markPasswordChangeCompleted() {
+  const token = await getFirebaseCurrentUserIdToken();
+  const response = await fetch("/api/auth/password-changed", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`
+    }
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(
+      typeof result === "object" && result && "message" in result
+        ? String((result as { message?: string }).message || "パスワード変更後の保存に失敗しました。")
+        : "パスワード変更後の保存に失敗しました。"
+    );
+  }
+  const current = getCurrentUser();
+  if (current) {
+    const nextSession = { ...current, mustChangePassword: false };
+    window.localStorage.setItem(authSessionKey, JSON.stringify(nextSession));
+  }
 }
 
 export function isAuthenticated() {
@@ -238,6 +310,8 @@ export function getDefaultPathForRole(_role: AuthRole) {
 
 export function canAccessPath(user: AuthUser, path: string) {
   if (path.startsWith("/login")) return true;
+  if (path.startsWith("/change-password")) return true;
+  if (user.mustChangePassword) return false;
   if (path.startsWith("/admin/master")) return user.role === "master";
   if (path.startsWith("/admin/users")) return user.role === "master";
   if (path.startsWith("/admin")) return true;
@@ -247,6 +321,7 @@ export function canAccessPath(user: AuthUser, path: string) {
 }
 
 export function getSafePathForUser(user: AuthUser, requestedPath: string | null) {
+  if (user.mustChangePassword) return "/change-password";
   const fallback = getDefaultPathForRole(user.role);
   if (!requestedPath) return fallback;
   if (!requestedPath.startsWith("/")) return fallback;

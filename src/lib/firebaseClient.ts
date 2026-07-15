@@ -5,6 +5,7 @@ import {
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut,
+  updatePassword,
   type Auth,
   type User
 } from "firebase/auth";
@@ -156,6 +157,13 @@ export async function sendFirebasePasswordReset(email: string) {
   const auth = getFirebaseAuth();
   if (!auth) throw new Error("Firebase設定が未登録です。");
   return sendPasswordResetEmail(auth, email);
+}
+
+export async function updateCurrentFirebasePassword(newPassword: string) {
+  const auth = getFirebaseAuth();
+  if (!auth?.currentUser) throw new Error("ログイン状態を確認できません。もう一度ログインしてください。");
+  await updatePassword(auth.currentUser, newPassword);
+  await auth.currentUser.getIdToken(true).catch(() => undefined);
 }
 
 export async function signOutFirebase() {

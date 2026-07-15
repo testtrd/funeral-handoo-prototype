@@ -298,6 +298,44 @@ textarea {
   font-weight: 700;
 }
 
+.user-branch-field {
+  display: grid;
+  gap: 8px;
+}
+
+.user-branch-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.user-role-field {
+  max-width: 260px;
+}
+
+.password-reset-panel {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.password-reset-panel h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.password-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.password-input-row button {
+  min-height: 42px;
+}
+
 .two-column-fields {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -424,11 +462,17 @@ textarea {
 
 .status-chip {
   display: inline-flex;
+  margin: 2px 4px 2px 0;
   padding: 4px 8px;
   border-radius: 4px;
   background: #e6f4f0;
   color: #164f45;
   font-weight: 700;
+}
+
+.status-chip.warning {
+  background: #fff4d6;
+  color: #7a4b00;
 }
 
 .sync-banner {
@@ -2230,6 +2274,7 @@ textarea {
   .compact-grid,
   .compact-grid.four,
   .compact-grid.five,
+  .user-branch-grid,
   .cremation-grid {
     grid-template-columns: 1fr;
   }

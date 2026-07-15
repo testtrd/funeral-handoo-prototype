@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getCurrentUser, getDefaultPathForRole, logout, type AuthRole, type AuthSession } from "@/lib/authService";
+import { getCurrentUser, getDefaultPathForRole, logout, refreshCurrentUserProfile, type AuthRole, type AuthSession } from "@/lib/authService";
 import { userRoleLabel } from "@/lib/accessControl";
 
 async function logoutAndGoLogin() {
@@ -16,11 +16,18 @@ export function AuthGate({ allowedRoles, children }: { allowedRoles?: AuthRole[]
   const [checked, setChecked] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
+    async function checkAuth() {
     try {
-      const current = getCurrentUser();
+      const current = await refreshCurrentUserProfile();
       if (!current) {
         const next = `${window.location.pathname}${window.location.search}`;
         window.location.replace(`/login?next=${encodeURIComponent(next)}`);
+        return;
+      }
+
+      if (current.mustChangePassword && !window.location.pathname.startsWith("/change-password")) {
+        window.location.replace("/change-password");
         return;
       }
 
@@ -31,12 +38,17 @@ export function AuthGate({ allowedRoles, children }: { allowedRoles?: AuthRole[]
         }
       }
 
-      setUser(current);
+      if (!cancelled) setUser(current);
     } catch (error) {
       console.error("[AuthGate] Failed to check auth state.", error);
     } finally {
-      setChecked(true);
+      if (!cancelled) setChecked(true);
     }
+    }
+    void checkAuth();
+    return () => {
+      cancelled = true;
+    };
   }, [allowedRoles]);
 
   if (!checked) {

@@ -7,7 +7,7 @@ import {
   signOutFirebase
 } from "@/lib/firebaseClient";
 import { normalizeAuthRole } from "@/lib/authService";
-import type { CreateUserAccountInput, UpdateUserAccountInput, UserAccount, UserAccountStatus } from "@/lib/userAccountTypes";
+import type { CreateUserAccountInput, ResetUserPasswordInput, UpdateUserAccountInput, UserAccount, UserAccountStatus } from "@/lib/userAccountTypes";
 
 function normalizeUserAccount(raw: Partial<UserAccount> & { uid?: string; id?: string }): UserAccount {
   const now = new Date().toISOString();
@@ -25,6 +25,7 @@ function normalizeUserAccount(raw: Partial<UserAccount> & { uid?: string; id?: s
     branchIds,
     role: normalizeAuthRole(raw.role),
     status: raw.status === "inactive" ? "inactive" : "active",
+    mustChangePassword: raw.mustChangePassword === true,
     notes: raw.notes || "",
     createdAt: raw.createdAt || now,
     updatedAt: raw.updatedAt || now
@@ -109,6 +110,15 @@ export async function updateUserAccountStatus(uid: string, status: UserAccountSt
     method: "POST",
     headers: await authHeaders(),
     body: JSON.stringify({ status })
+  });
+  return normalizeUserAccount(result.user);
+}
+
+export async function resetUserInitialPassword(uid: string, input: ResetUserPasswordInput): Promise<UserAccount> {
+  const result = await requestJson<{ user: UserAccount }>(`/api/admin/users/${encodeURIComponent(uid)}/password`, {
+    method: "POST",
+    headers: await authHeaders(),
+    body: JSON.stringify(input)
   });
   return normalizeUserAccount(result.user);
 }
