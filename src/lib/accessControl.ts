@@ -7,7 +7,7 @@ export type CaseAccessData = {
 export function userRoleLabel(role: AuthUser["role"]) {
   if (role === "master") return "\u7ba1\u7406\u8005";
   if (role === "planning") return "\u4f01\u753b\u90e8";
-  if (role === "manager") return "\u6240\u9577\u30fb\u6240\u9577\u4ee3\u7406";
+  if (role === "manager") return "\u5f79\u8077\u8005\u4ee5\u4e0a";
   return "\u30c9\u30e9\u30a4\u30d0\u30fc";
 }
 
