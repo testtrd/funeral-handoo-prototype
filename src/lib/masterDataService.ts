@@ -371,7 +371,7 @@ export function exportMasterDataJson() {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `業務引継書マスター_${new Date().toISOString().slice(0, 10)}.json`;
+  anchor.download = `業務引継書設定_${new Date().toISOString().slice(0, 10)}.json`;
   anchor.click();
   URL.revokeObjectURL(url);
 }

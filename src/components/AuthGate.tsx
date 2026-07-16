@@ -3,8 +3,10 @@
 import { useEffect, useState } from "react";
 import { getCurrentUser, getDefaultPathForRole, logout, refreshCurrentUserProfile, type AuthRole, type AuthSession } from "@/lib/authService";
 import { userRoleLabel } from "@/lib/accessControl";
+import { releaseCurrentEditingLock } from "@/lib/handoffStorage";
 
 async function logoutAndGoLogin() {
+  releaseCurrentEditingLock();
   await logout().catch((error) => {
     console.warn("[AuthGate] Firebase sign-out failed.", error);
   });

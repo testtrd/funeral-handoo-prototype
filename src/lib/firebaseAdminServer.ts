@@ -48,6 +48,10 @@ function stringArrayFromValue(value: unknown) {
     : [];
 }
 
+function roleUsesAllBranches(role: AuthRole) {
+  return role === "master" || role === "planning";
+}
+
 function timestampString(value: unknown, fallback: string) {
   if (!value) return fallback;
   if (typeof value === "string") return value;
@@ -91,15 +95,16 @@ function validateCreateInput(input: CreateUserAccountInput) {
   if (password.length < 8) throw new Error("初期パスワードは8文字以上で入力してください。");
   if (password !== confirmPassword) throw new Error("初期パスワードと確認用パスワードが一致しません。");
 
-  const branchIds = stringArrayFromValue(input.branchIds);
-  const branchId = input.branchId?.trim() || branchIds[0] || "";
+  const role = roleFromValue(input.role);
+  const branchIds = roleUsesAllBranches(role) ? [] : stringArrayFromValue(input.branchIds);
+  const branchId = roleUsesAllBranches(role) ? "" : input.branchId?.trim() || branchIds[0] || "";
 
   return {
     name,
     email,
     password,
-    role: roleFromValue(input.role),
-    department: input.department?.trim() || "",
+    role,
+    department: roleUsesAllBranches(role) ? "全拠点" : input.department?.trim() || "",
     branchId,
     branchIds: branchIds.length ? branchIds : branchId ? [branchId] : [],
     notes: input.notes?.trim() || ""
@@ -110,13 +115,14 @@ function validateUpdateInput(input: UpdateUserAccountInput) {
   const name = input.name.trim();
   if (!name) throw new Error("氏名を入力してください。");
 
-  const branchIds = stringArrayFromValue(input.branchIds);
-  const branchId = input.branchId?.trim() || branchIds[0] || "";
+  const role = roleFromValue(input.role);
+  const branchIds = roleUsesAllBranches(role) ? [] : stringArrayFromValue(input.branchIds);
+  const branchId = roleUsesAllBranches(role) ? "" : input.branchId?.trim() || branchIds[0] || "";
 
   return {
     name,
-    role: roleFromValue(input.role),
-    department: input.department?.trim() || "",
+    role,
+    department: roleUsesAllBranches(role) ? "全拠点" : input.department?.trim() || "",
     branchId,
     branchIds: branchIds.length ? branchIds : branchId ? [branchId] : [],
     notes: input.notes?.trim() || ""

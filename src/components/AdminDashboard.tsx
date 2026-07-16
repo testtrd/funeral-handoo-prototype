@@ -11,14 +11,18 @@ import { createElementPdfBlob, downloadElementAsPdf, sanitizeFileName } from "@/
 import { familyCopyDeliveryText } from "@/lib/familyCopyDeliveryService";
 import {
   deleteHandoffRecord,
+  acquireHandoffEditLock,
+  editLockDisplay,
   exportHandoffRecordJson,
   getHandoffRecords,
+  getActiveEditLock,
   nextActionForRecord,
   openHandoffForEditing,
   progressPercentForStatus,
   saveHandoffRecord,
   subscribeHandoffRecords,
   syncStatusLabel,
+  isRecordEditedByOther,
   type HandoffRecord,
   type HandoffRecordStatus
 } from "@/lib/handoffStorage";
@@ -63,6 +67,16 @@ function formatFlexibleDateTime(value: string) {
 
 function updatedByName(record: HandoffRecord) {
   return record.updatedBy?.name || record.createdBy?.name || "-";
+}
+
+function renderEditLock(record: HandoffRecord) {
+  const lock = editLockDisplay(record);
+  return (
+    <span className={lock.locked ? "edit-lock-chip active" : "edit-lock-chip"}>
+      <strong>{lock.label}</strong>
+      {lock.lastActiveAt ? <small>最終操作 {formatDateTime(lock.lastActiveAt)}</small> : null}
+    </span>
+  );
 }
 
 function isRelatedToUser(record: HandoffRecord, userId: string) {
@@ -381,7 +395,21 @@ export default function AdminDashboard() {
       alert("\u4ed6\u62e0\u70b9\u306e\u6848\u4ef6\u306e\u305f\u3081\u95b2\u89a7\u306e\u307f\u53ef\u80fd\u3067\u3059\u3002");
       return;
     }
-    openHandoffForEditing(record, record.handoffProgress?.currentStep);
+    const lockedRecord = acquireHandoffEditLock(record.id);
+    if (lockedRecord && isRecordEditedByOther(lockedRecord, currentUser)) {
+      const lock = getActiveEditLock(lockedRecord);
+      setSelectedId(record.id);
+      alert(lock ? `${lock.editingByName}さんが編集中です。必要な場合は「編集を引き継ぐ」を押してください。` : "他の担当者が編集中です。");
+      return;
+    }
+    openHandoffForEditing(lockedRecord || record, record.handoffProgress?.currentStep);
+    window.location.href = "/";
+  }
+
+  function takeOverAndEdit(record: HandoffRecord) {
+    if (!canEditCase(currentUser, record)) return;
+    const lockedRecord = acquireHandoffEditLock(record.id, { takeover: true }) || record;
+    openHandoffForEditing(lockedRecord, record.handoffProgress?.currentStep);
     window.location.href = "/";
   }
 
@@ -565,7 +593,8 @@ export default function AdminDashboard() {
             <AuthStatus />
             <button onClick={() => setSelectedId(null)}><ArrowLeft size={18} /> 一覧へ戻る</button>
             <a className="button-link" href="/">新規作成</a>
-            <button className="primary" onClick={() => editRecord(selected)}><Pencil size={18} /> 編集画面へ戻る</button>
+            <button className="primary" onClick={() => editRecord(selected)} disabled={isRecordEditedByOther(selected, currentUser)}><Pencil size={18} /> 編集画面へ戻る</button>
+            {isRecordEditedByOther(selected, currentUser) ? <button onClick={() => takeOverAndEdit(selected)}>編集を引き継ぐ</button> : null}
           </div>
         </header>
 
@@ -578,6 +607,7 @@ export default function AdminDashboard() {
           <div><span>入力ステータス</span><strong>{statusDisplay(selected.status)}</strong></div>
           <div><span>次にやる事</span><strong>{nextActionForRecord(selected)}</strong></div>
           <div><span>進捗率</span><strong>{progressPercent(selected)}%</strong></div>
+          <div><span>編集中</span><strong>{renderEditLock(selected)}</strong></div>
           <div><span>親族確認</span><strong>{selected.data.relativeConfirmation.confirmed ? "確認済み" : "未確認"}</strong></div>
           <div><span>親族控え送付先</span><strong>{familyCopyDeliveryText(selected.data.familyCopyDelivery)}</strong></div>
           <div><span>業者控えPDF</span><strong>{selected.data.vendorCopy.generated ? "保存済み" : "未保存"}</strong></div>
@@ -726,7 +756,7 @@ export default function AdminDashboard() {
           <a className="button-link" href="#records">案件一覧</a>
           <a className="button-link" href="/admin/report-preview">帳票プレビュー</a>
           <button onClick={openBulkMode}>PDF保存・印刷・共有</button>
-          {isAdmin ? <a className="button-link" href="/admin/master">マスター管理</a> : null}
+          {isAdmin ? <a className="button-link" href="/admin/master">設定</a> : null}
         </div>
       </header>
       <SyncStatusBanner />
@@ -783,7 +813,7 @@ export default function AdminDashboard() {
 
       <section id="records" className="admin-table-wrap">
         <table className={bulkMode ? "admin-table selection-mode" : "admin-table"}>
-          <thead><tr>{bulkMode ? <th><input type="checkbox" aria-label="表示中の案件をすべて選択" checked={filteredRecords.length > 0 && selectableRecords.length === filteredRecords.length} onChange={(event) => toggleAllFilteredRecords(event.target.checked)} /></th> : null}<th>ステータス</th><th>次にやる事</th><th>進捗率</th><th>同期</th><th>受付日時</th><th>拠点</th><th>業者</th><th>故人氏名</th><th>喪主・代表者</th><th>対応ドライバー</th><th>火葬予約</th><th>PDF</th><th>最終更新</th><th>最終更新者</th><th>操作</th></tr></thead>
+          <thead><tr>{bulkMode ? <th><input type="checkbox" aria-label="表示中の案件をすべて選択" checked={filteredRecords.length > 0 && selectableRecords.length === filteredRecords.length} onChange={(event) => toggleAllFilteredRecords(event.target.checked)} /></th> : null}<th>ステータス</th><th>次にやる事</th><th>進捗率</th><th>同期</th><th>編集中</th><th>受付日時</th><th>拠点</th><th>業者</th><th>故人氏名</th><th>喪主・代表者</th><th>対応ドライバー</th><th>火葬予約</th><th>PDF</th><th>最終更新</th><th>最終更新者</th><th>操作</th></tr></thead>
           <tbody>
             {filteredRecords.map((record) => (
               <tr key={record.id} tabIndex={0} onClick={() => setSelectedId(record.id)} onKeyDown={(event) => event.key === "Enter" && setSelectedId(record.id)}>
@@ -797,18 +827,20 @@ export default function AdminDashboard() {
                   </span>
                   {record.syncError ? <span className="sync-error-detail">{record.syncError}</span> : null}
                 </td>
+                <td>{renderEditLock(record)}</td>
                 <td>{formatDateTime(record.createdAt)}</td><td>{record.branchName}</td><td>{record.vendorName}</td><td>{record.deceasedName || "-"}</td><td>{record.mournerName || "-"}</td><td>{record.assignedDriver?.name || record.createdBy?.name || "-"}</td>
                 <td>{record.cremationReservationStatus || "-"}</td><td>{record.pdf.generated ? "作成済み" : "未作成"}</td><td>{formatDateTime(record.updatedAt)}</td><td>{updatedByName(record)}</td>
                 <td>
                   <div className="table-actions compact-actions">
-                    <button onClick={(event) => { event.stopPropagation(); editRecord(record); }}>入力再開</button>
+                    <button onClick={(event) => { event.stopPropagation(); editRecord(record); }} disabled={isRecordEditedByOther(record, currentUser)}>入力再開</button>
+                    {isRecordEditedByOther(record, currentUser) ? <button onClick={(event) => { event.stopPropagation(); takeOverAndEdit(record); }}>編集を引き継ぐ</button> : null}
                     <button onClick={(event) => { event.stopPropagation(); setSelectedId(record.id); }}>詳細</button>
                     {isAdmin ? <button className="danger-button" onClick={(event) => { event.stopPropagation(); deleteRecord(record); }}>削除</button> : null}
                   </div>
                 </td>
               </tr>
             ))}
-            {!filteredRecords.length ? <tr><td colSpan={bulkMode ? 16 : 15} className="empty-state">保存済みの業務引継書はありません。</td></tr> : null}
+            {!filteredRecords.length ? <tr><td colSpan={bulkMode ? 17 : 16} className="empty-state">保存済みの業務引継書はありません。</td></tr> : null}
           </tbody>
         </table>
       </section>

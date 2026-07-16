@@ -6,7 +6,21 @@ import { AuthStatus } from "@/components/AuthGate";
 import { SyncStatusBanner } from "@/components/SyncStatusBanner";
 import { canEditCase, canManageMasters, canViewAllCases, canViewCase } from "@/lib/accessControl";
 import { getCurrentUser, type AuthSession } from "@/lib/authService";
-import { getHandoffRecords, nextActionForRecord, openHandoffForEditing, progressPercentForStatus, saveHandoffRecord, subscribeHandoffRecords, syncStatusLabel, type HandoffRecord, type HandoffRecordStatus } from "@/lib/handoffStorage";
+import {
+  acquireHandoffEditLock,
+  editLockDisplay,
+  getActiveEditLock,
+  getHandoffRecords,
+  isRecordEditedByOther,
+  nextActionForRecord,
+  openHandoffForEditing,
+  progressPercentForStatus,
+  saveHandoffRecord,
+  subscribeHandoffRecords,
+  syncStatusLabel,
+  type HandoffRecord,
+  type HandoffRecordStatus
+} from "@/lib/handoffStorage";
 
 const driverOperableStatuses = ["入力中", "現場入力完了"];
 
@@ -21,6 +35,16 @@ function destinationText(record: HandoffRecord) {
 
 function updatedByName(record: HandoffRecord) {
   return record.updatedBy?.name || record.createdBy?.name || "-";
+}
+
+function renderEditLock(record: HandoffRecord) {
+  const lock = editLockDisplay(record);
+  return (
+    <span className={lock.locked ? "edit-lock-chip active" : "edit-lock-chip"}>
+      <strong>{lock.label}</strong>
+      {lock.lastActiveAt ? <small>最終操作 {formatDateTime(lock.lastActiveAt)}</small> : null}
+    </span>
+  );
 }
 
 function statusDisplay(status: HandoffRecordStatus) {
@@ -91,7 +115,21 @@ export default function DriverDashboard() {
 
   function resumeRecord(record: HandoffRecord, step = inferResumeStep(record)) {
     if (!user || !canOperateRecord(record, user)) return;
-    openHandoffForEditing(record, step);
+    const lockedRecord = acquireHandoffEditLock(record.id);
+    if (lockedRecord && isRecordEditedByOther(lockedRecord, user)) {
+      const lock = getActiveEditLock(lockedRecord);
+      setSelectedId(record.id);
+      setMessage(lock ? `${lock.editingByName}さんが編集中です。必要な場合は「編集を引き継ぐ」を押してください。` : "他の担当者が編集中です。");
+      return;
+    }
+    openHandoffForEditing(lockedRecord || record, step);
+    window.location.href = "/";
+  }
+
+  function takeOverAndResume(record: HandoffRecord, step = inferResumeStep(record)) {
+    if (!user || !canOperateRecord(record, user)) return;
+    const lockedRecord = acquireHandoffEditLock(record.id, { takeover: true }) || record;
+    openHandoffForEditing(lockedRecord, step);
     window.location.href = "/";
   }
 
@@ -122,7 +160,7 @@ export default function DriverDashboard() {
           <button onClick={loadRecords}><RefreshCw size={18} /> 更新</button>
           <a className="button-link primary" href="/">新規作成</a>
           <a className="button-link" href="/admin">管理画面</a>
-          {canManageMasters(user) ? <a className="button-link" href="/admin/master">マスター管理</a> : null}
+          {canManageMasters(user) ? <a className="button-link" href="/admin/master">設定</a> : null}
         </div>
       </header>
       <SyncStatusBanner />
@@ -144,6 +182,7 @@ export default function DriverDashboard() {
               <th>次にやる事</th>
               <th>進捗率</th>
               <th>同期</th>
+              <th>編集中</th>
               <th>作成日時</th>
               <th>拠点</th>
               <th>業者</th>
@@ -170,6 +209,7 @@ export default function DriverDashboard() {
                     </span>
                     {record.syncError ? <span className="sync-error-detail">{record.syncError}</span> : null}
                   </td>
+                  <td>{renderEditLock(record)}</td>
                   <td>{formatDateTime(record.createdAt)}</td>
                   <td>{record.branchName}</td>
                   <td>{record.vendorName}</td>
@@ -181,9 +221,14 @@ export default function DriverDashboard() {
                   <td>{updatedByName(record)}</td>
                   <td>
                     <div className="table-actions">
-                      <button onClick={(event) => { event.stopPropagation(); resumeRecord(record); }} disabled={!canOperate}>
+                      <button onClick={(event) => { event.stopPropagation(); resumeRecord(record); }} disabled={!canOperate || isRecordEditedByOther(record, user)}>
                         <Play size={16} /> 入力を再開
                       </button>
+                      {user && isRecordEditedByOther(record, user) ? (
+                        <button onClick={(event) => { event.stopPropagation(); takeOverAndResume(record); }} disabled={!canOperate}>
+                          編集を引き継ぐ
+                        </button>
+                      ) : null}
                       <button onClick={(event) => { event.stopPropagation(); resumeRecord(record, 14); }} disabled={!canOperate}>
                         <Pencil size={16} /> 親族控え確認
                       </button>
@@ -198,7 +243,7 @@ export default function DriverDashboard() {
                 </tr>
               );
             })}
-            {!visibleRecords.length ? <tr><td colSpan={14} className="empty-state">表示できる案件はありません。</td></tr> : null}
+            {!visibleRecords.length ? <tr><td colSpan={15} className="empty-state">表示できる案件はありません。</td></tr> : null}
           </tbody>
         </table>
       </section>
@@ -218,15 +263,21 @@ export default function DriverDashboard() {
               <div><dt>搬送先</dt><dd>{destinationText(selected)}</dd></div>
               <div><dt>火葬予約</dt><dd>{selected.cremationReservationStatus || "-"}</dd></div>
               <div><dt>担当ドライバー</dt><dd>{selected.assignedDriver?.name || selected.createdBy?.name || "-"}</dd></div>
+              <div><dt>編集中</dt><dd>{renderEditLock(selected)}</dd></div>
               <div><dt>最終更新</dt><dd>{formatDateTime(selected.updatedAt)}</dd></div>
             </dl>
           </article>
           <article>
             <h2>操作</h2>
             <div className="admin-button-row">
-              <button className="primary" onClick={() => resumeRecord(selected)} disabled={!user || !canOperateRecord(selected, user)}>
+              <button className="primary" onClick={() => resumeRecord(selected)} disabled={!user || !canOperateRecord(selected, user) || isRecordEditedByOther(selected, user)}>
                 <Play size={18} /> 入力を再開
               </button>
+              {user && isRecordEditedByOther(selected, user) ? (
+                <button onClick={() => takeOverAndResume(selected)} disabled={!canOperateRecord(selected, user)}>
+                  編集を引き継ぐ
+                </button>
+              ) : null}
               <button onClick={() => resumeRecord(selected, 14)} disabled={!user || !canOperateRecord(selected, user)}>
                 <Pencil size={18} /> 親族控え確認へ進む
               </button>
@@ -235,7 +286,7 @@ export default function DriverDashboard() {
               </button>
             </div>
             {user?.role === "staff" ? (
-              <p className="small">業者控えPDF、社内控えPDFの保存・印刷・共有、JSON出力、マスター管理は管理画面側で行います。</p>
+              <p className="small">業者控えPDF、社内控えPDFの保存・印刷・共有、JSON出力、設定は管理画面側で行います。</p>
             ) : (
               <p className="small">管理処理は管理画面の案件詳細から行えます。</p>
             )}

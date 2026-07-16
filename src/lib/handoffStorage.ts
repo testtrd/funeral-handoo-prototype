@@ -17,9 +17,11 @@ const recordsUpdatedEventName = "funeral-handoff-records-updated";
 const editingDraftKey = "funeral-handoff-draft-v3";
 const editingStepKey = "funeral-handoff-edit-step";
 const editingRecordIdKey = "funeral-handoff-edit-record-id";
+const activeEditingRecordIdKey = "funeral-handoff-active-edit-record-id";
 const totalHandoffSteps = 15;
 const cloudSyncTimeoutMs = 10000;
 const staleSyncingMs = 15000;
+const editLockTimeoutMs = 15 * 60 * 1000;
 
 export type HandoffRecordStatus = "入力中" | "現場入力完了" | "業務終了後入力済み" | "控え作成済み" | "送信済み" | "完了";
 export type HandoffSyncStatus = "synced" | "offline_pending" | "syncing" | "sync_failed";
@@ -107,6 +109,10 @@ export type HandoffRecord = {
   createdBy: AuthUser | null;
   updatedBy: AuthUser | null;
   assignedDriver: { userId: string; name: string } | null;
+  editingByUid?: string;
+  editingByName?: string;
+  editingStartedAt?: string;
+  editingHeartbeatAt?: string;
   syncStatus: HandoffSyncStatus;
   lastSavedLocalAt: string;
   lastSyncedAt: string | null;
@@ -129,6 +135,138 @@ export type HandoffRecord = {
     url: string;
   };
 };
+
+export type HandoffEditLock = {
+  editingByUid: string;
+  editingByName: string;
+  editingStartedAt: string;
+  editingHeartbeatAt: string;
+  expired: boolean;
+};
+
+export function isEditLockExpired(record: Pick<HandoffRecord, "editingHeartbeatAt">, now = Date.now()) {
+  if (!record.editingHeartbeatAt) return true;
+  const heartbeatAt = new Date(record.editingHeartbeatAt).getTime();
+  return !Number.isFinite(heartbeatAt) || now - heartbeatAt > editLockTimeoutMs;
+}
+
+export function getActiveEditLock(record: HandoffRecord, now = Date.now()): HandoffEditLock | null {
+  if (!record.editingByUid || !record.editingHeartbeatAt) return null;
+  const expired = isEditLockExpired(record, now);
+  if (expired) return null;
+  return {
+    editingByUid: record.editingByUid,
+    editingByName: record.editingByName || "他の担当者",
+    editingStartedAt: record.editingStartedAt || record.editingHeartbeatAt,
+    editingHeartbeatAt: record.editingHeartbeatAt,
+    expired
+  };
+}
+
+export function isRecordEditedByOther(record: HandoffRecord, user: AuthUser | null = getCurrentUser()) {
+  const lock = getActiveEditLock(record);
+  return Boolean(lock && (!user || lock.editingByUid !== user.userId));
+}
+
+export function editLockDisplay(record: HandoffRecord) {
+  const lock = getActiveEditLock(record);
+  if (!lock) return { label: "未編集中", lastActiveAt: "", locked: false };
+  return {
+    label: `${lock.editingByName}さんが編集中`,
+    lastActiveAt: lock.editingHeartbeatAt,
+    locked: true
+  };
+}
+
+function syncFieldsForLocalSave(existing: HandoffRecord | undefined, now: string) {
+  const online = getNetworkStatus() === "online";
+  const cloudAvailable = isCloudSaveAvailable();
+  return {
+    syncStatus: cloudAvailable ? (online ? "syncing" as HandoffSyncStatus : "offline_pending" as HandoffSyncStatus) : "sync_failed" as HandoffSyncStatus,
+    lastSavedLocalAt: now,
+    lastSyncedAt: cloudAvailable ? existing?.lastSyncedAt || null : online ? now : existing?.lastSyncedAt || null,
+    syncError: cloudAvailable ? "" : "Firebase設定が未登録です。端末内に保存しました。"
+  };
+}
+
+function persistRecord(record: HandoffRecord) {
+  const records = getHandoffRecords();
+  const nextRecords = records.some((item) => item.id === record.id)
+    ? records.map((item) => item.id === record.id ? record : item)
+    : [record, ...records];
+  saveRecords(nextRecords);
+  if (isCloudSaveAvailable() && getNetworkStatus() === "online") {
+    queueCloudSync(record);
+  }
+}
+
+function assertEditLockOwner(existing: HandoffRecord | undefined, user: AuthUser | null) {
+  if (!existing) return;
+  const lock = getActiveEditLock(existing);
+  if (!lock || lock.editingByUid === user?.userId) return;
+  throw new Error(`${lock.editingByName}さんが編集中のため保存できません。必要な場合は編集を引き継いでください。`);
+}
+
+export function acquireHandoffEditLock(recordId: string, options: { takeover?: boolean } = {}) {
+  if (!canUseStorage()) return null;
+  const user = getCurrentUser();
+  if (!user) return null;
+  const records = getHandoffRecords();
+  const existing = records.find((record) => record.id === recordId);
+  if (!existing) return null;
+  const lock = getActiveEditLock(existing);
+  if (lock && lock.editingByUid !== user.userId && !options.takeover) return existing;
+
+  const now = new Date().toISOString();
+  const next: HandoffRecord = {
+    ...existing,
+    ...syncFieldsForLocalSave(existing, now),
+    editingByUid: user.userId,
+    editingByName: user.name,
+    editingStartedAt: lock?.editingByUid === user.userId ? existing.editingStartedAt || now : now,
+    editingHeartbeatAt: now
+  };
+  window.localStorage.setItem(activeEditingRecordIdKey, recordId);
+  persistRecord(next);
+  return next;
+}
+
+export function touchHandoffEditLock(recordId: string) {
+  if (!canUseStorage()) return;
+  const user = getCurrentUser();
+  if (!user) return;
+  const existing = getHandoffRecordById(recordId);
+  if (!existing || existing.editingByUid !== user.userId) return;
+  const now = new Date().toISOString();
+  persistRecord({
+    ...existing,
+    ...syncFieldsForLocalSave(existing, now),
+    editingHeartbeatAt: now
+  });
+}
+
+export function releaseHandoffEditLock(recordId: string) {
+  if (!canUseStorage()) return;
+  const user = getCurrentUser();
+  const existing = getHandoffRecordById(recordId);
+  if (!existing || (existing.editingByUid && existing.editingByUid !== user?.userId)) return;
+  const now = new Date().toISOString();
+  persistRecord({
+    ...existing,
+    ...syncFieldsForLocalSave(existing, now),
+    editingByUid: "",
+    editingByName: "",
+    editingStartedAt: "",
+    editingHeartbeatAt: ""
+  });
+  window.localStorage.removeItem(activeEditingRecordIdKey);
+}
+
+export function releaseCurrentEditingLock() {
+  if (!canUseStorage()) return;
+  const recordId = window.localStorage.getItem(activeEditingRecordIdKey) || window.localStorage.getItem(editingRecordIdKey);
+  if (recordId) releaseHandoffEditLock(recordId);
+}
 
 export function nextActionForRecord(record: HandoffRecord) {
   if (record.status === "完了") return "対応終了";
@@ -161,6 +299,7 @@ function saveRecords(records: HandoffRecord[]) {
 function normalizeRecord(record: HandoffRecord): HandoffRecord {
   const createdBy = record.createdBy || null;
   const status = normalizeHandoffStatus(record.status);
+  const lockExpired = isEditLockExpired(record);
   return {
     ...record,
     status,
@@ -169,6 +308,10 @@ function normalizeRecord(record: HandoffRecord): HandoffRecord {
     createdBy,
     updatedBy: record.updatedBy || null,
     assignedDriver: record.assignedDriver || (createdBy?.role === "staff" ? { userId: createdBy.userId, name: createdBy.name } : null),
+    editingByUid: lockExpired ? "" : record.editingByUid || "",
+    editingByName: lockExpired ? "" : record.editingByName || "",
+    editingStartedAt: lockExpired ? "" : record.editingStartedAt || "",
+    editingHeartbeatAt: lockExpired ? "" : record.editingHeartbeatAt || "",
     syncStatus: isStaleSyncing(record) ? "offline_pending" : record.syncStatus || "synced",
     lastSavedLocalAt: record.lastSavedLocalAt || record.updatedAt,
     lastSyncedAt: record.lastSyncedAt || null,
@@ -374,6 +517,7 @@ export function saveHandoffRecord(data: HandoffData, options: SaveHandoffRecordO
   const vendorName = vendor?.name || "業者未選択";
   const generated = options.pdfGenerated || existing?.pdf.generated || false;
   const currentUser = getCurrentUser();
+  assertEditLockOwner(existing, currentUser);
   const createdBy = existing?.createdBy || currentUser;
   const status = normalizeHandoffStatus(options.status);
   const online = getNetworkStatus() === "online";
@@ -395,6 +539,10 @@ export function saveHandoffRecord(data: HandoffData, options: SaveHandoffRecordO
     createdBy,
     updatedBy: currentUser,
     assignedDriver: existing?.assignedDriver || (createdBy?.role === "staff" ? { userId: createdBy.userId, name: createdBy.name } : null),
+    editingByUid: existing?.editingByUid || "",
+    editingByName: existing?.editingByName || "",
+    editingStartedAt: existing?.editingStartedAt || "",
+    editingHeartbeatAt: existing?.editingByUid === currentUser?.userId ? now : existing?.editingHeartbeatAt || "",
     syncStatus: cloudAvailable ? (online ? "syncing" : "offline_pending") : "sync_failed",
     lastSavedLocalAt: now,
     lastSyncedAt: cloudAvailable ? existing?.lastSyncedAt || null : online ? now : existing?.lastSyncedAt || null,
@@ -429,6 +577,7 @@ export function saveHandoffRecord(data: HandoffData, options: SaveHandoffRecordO
 
 export function updateHandoffRecord(record: HandoffRecord) {
   if (!canUseStorage()) throw new Error("この環境では保存できません。");
+  assertEditLockOwner(getHandoffRecordById(record.id), getCurrentUser());
   const records = getHandoffRecords().map((item) => item.id === record.id ? record : item);
   saveRecords(records);
 }

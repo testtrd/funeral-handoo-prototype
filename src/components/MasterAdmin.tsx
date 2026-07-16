@@ -201,9 +201,9 @@ export default function MasterAdmin({ section = "overview" }: { section?: Master
       try {
         importMasterDataJsonText(String(reader.result));
         reload();
-        alert("マスター設定を読み込みました。");
+        alert("設定を読み込みました。");
       } catch {
-        alert("マスターJSONを読み込めませんでした。");
+        alert("設定JSONを読み込めませんでした。");
       }
     };
     reader.readAsText(file);
@@ -317,7 +317,7 @@ export default function MasterAdmin({ section = "overview" }: { section?: Master
       <header className="admin-header">
         <div>
           <p className="eyebrow">管理画面</p>
-          <h1>マスター管理</h1>
+          <h1>設定</h1>
           <p className="small">拠点、業者、業者ごとの表示ルールをブラウザ内に保存して管理します。</p>
         </div>
         <div className="toolbar">
@@ -331,7 +331,7 @@ export default function MasterAdmin({ section = "overview" }: { section?: Master
         </div>
       </header>
 
-      <nav className="master-nav" aria-label="マスター管理メニュー">
+      <nav className="master-nav" aria-label="設定メニュー">
         {sectionLinks.map(([key, href]) => <a key={key} className={section === key ? "active" : ""} href={href}>{sectionLabels[key]}</a>)}
       </nav>
 

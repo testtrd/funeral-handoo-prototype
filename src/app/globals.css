@@ -311,6 +311,23 @@ textarea {
   max-width: 260px;
 }
 
+.all-branch-notice {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.all-branch-notice strong {
+  font-size: 14px;
+}
+
+.all-branch-notice span {
+  color: var(--muted);
+}
+
 .password-reset-panel {
   display: grid;
   gap: 10px;
@@ -603,6 +620,55 @@ textarea {
   font-weight: 600;
   line-height: 1.35;
   overflow-wrap: anywhere;
+}
+
+.edit-lock-chip {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 132px;
+  min-height: 34px;
+  box-sizing: border-box;
+  border: 1px solid #d9e2de;
+  border-radius: 8px;
+  background: #f7fbfa;
+  color: #40544d;
+  padding: 4px 8px;
+  font-size: 12px;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.edit-lock-chip.active {
+  border-color: #efb4ad;
+  background: #fff5f3;
+  color: #98281d;
+}
+
+.edit-lock-chip small {
+  margin-top: 2px;
+  font-size: 10px;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.edit-lock-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 12px 0;
+  border: 1px solid #efb4ad;
+  border-radius: 8px;
+  background: #fff5f3;
+  color: #98281d;
+  padding: 12px 14px;
+}
+
+.edit-lock-notice p {
+  margin: 4px 0 0;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .progress-pill {

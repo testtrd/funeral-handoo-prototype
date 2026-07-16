@@ -19,7 +19,7 @@ const labels = {
   title: "\u793e\u54e1\u7ba1\u7406",
   description: "LINE WORKS\u30e1\u30fc\u30eb\u30a2\u30c9\u30ec\u30b9\u3092\u30ed\u30b0\u30a4\u30f3ID\u3068\u3057\u3066\u4f7f\u7528\u3057\u307e\u3059\u3002",
   dashboard: "\u30c0\u30c3\u30b7\u30e5\u30dc\u30fc\u30c9",
-  masterAdmin: "\u30de\u30b9\u30bf\u30fc\u7ba1\u7406",
+  masterAdmin: "\u8a2d\u5b9a",
   editEmployee: "\u793e\u54e1\u60c5\u5831\u3092\u7de8\u96c6",
   newEmployee: "\u65b0\u898f\u793e\u54e1\u8ffd\u52a0",
   name: "\u6c0f\u540d",
@@ -78,6 +78,10 @@ function formatDate(value: string) {
   return date.toLocaleDateString("ja-JP");
 }
 
+function roleUsesAllBranches(role: AuthRole) {
+  return role === "master" || role === "planning";
+}
+
 export default function UserAdmin({ embedded = false }: { embedded?: boolean }) {
   const [users, setUsers] = useState<UserAccount[]>([]);
   const [form, setForm] = useState<CreateUserAccountInput>(emptyForm);
@@ -116,6 +120,17 @@ export default function UserAdmin({ embedded = false }: { embedded?: boolean }) 
     }));
   }
 
+  function updateFormRole(role: AuthRole) {
+    setForm((current) => roleUsesAllBranches(role)
+      ? { ...current, role, branchId: "", branchIds: [], department: "全拠点" }
+      : { ...current, role, department: branchNameText(branchIdsFromValue(current)) });
+  }
+
+  function userAffiliationText(user: UserAccount) {
+    if (roleUsesAllBranches(user.role)) return "全拠点";
+    return branchNameText(branchIdsFromValue(user)) || user.department || "-";
+  }
+
   async function loadUsers() {
     setLoading(true);
     setError("");
@@ -137,7 +152,7 @@ export default function UserAdmin({ embedded = false }: { embedded?: boolean }) 
     const keyword = search.trim().toLowerCase();
     if (!keyword) return users;
     return users.filter((user) => {
-      const branchText = branchNameText(branchIdsFromValue(user));
+      const branchText = userAffiliationText(user);
       return (
         user.name.toLowerCase().includes(keyword) ||
         user.email.toLowerCase().includes(keyword) ||
@@ -154,8 +169,8 @@ export default function UserAdmin({ embedded = false }: { embedded?: boolean }) 
     setError("");
 
     try {
-      const selectedBranchIds = branchIdsFromValue(form);
-      const department = branchNameText(selectedBranchIds);
+      const selectedBranchIds = roleUsesAllBranches(form.role) ? [] : branchIdsFromValue(form);
+      const department = roleUsesAllBranches(form.role) ? "全拠点" : branchNameText(selectedBranchIds);
       if (editingUid) {
         const updated = await updateUserAccount(editingUid, {
           name: form.name,
@@ -197,7 +212,7 @@ export default function UserAdmin({ embedded = false }: { embedded?: boolean }) 
   }
 
   function startEdit(user: UserAccount) {
-    const branchIds = branchIdsFromValue(user);
+    const branchIds = roleUsesAllBranches(user.role) ? [] : branchIdsFromValue(user);
     setEditingUid(user.uid);
     setMessage("");
     setError("");
@@ -206,7 +221,7 @@ export default function UserAdmin({ embedded = false }: { embedded?: boolean }) 
       email: user.email,
       password: "",
       confirmPassword: "",
-      department: branchNameText(branchIds) || user.department || "",
+      department: roleUsesAllBranches(user.role) ? "全拠点" : branchNameText(branchIds) || user.department || "",
       branchId: branchIds[0] || "",
       branchIds,
       role: user.role,
@@ -327,41 +342,48 @@ export default function UserAdmin({ embedded = false }: { embedded?: boolean }) 
               </div>
             </>
           )}
-          <fieldset className="master-field user-branch-field">
-            <legend>{labels.affiliation}</legend>
-            <div className="master-check-grid user-branch-grid">
-              {enabledBranches.map((branch) => {
-                const selectedBranchIds = branchIdsFromValue(form);
-                const checked = selectedBranchIds.includes(branch.id);
-                return (
-                  <label className="master-check" key={branch.id}>
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={(event) => {
-                        updateFormBranchIds(
-                          event.target.checked
-                            ? [...selectedBranchIds, branch.id]
-                            : selectedBranchIds.filter((branchId) => branchId !== branch.id)
-                        );
-                      }}
-                    />
-                    {branch.name}
-                  </label>
-                );
-              })}
-            </div>
-            <p className="small">{labels.multiBranchHint}</p>
-          </fieldset>
           <label className="user-role-field">
             {labels.role}
-            <select value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value as AuthRole })}>
+            <select value={form.role} onChange={(event) => updateFormRole(event.target.value as AuthRole)}>
               <option value="staff">{userRoleLabel("staff")}</option>
               <option value="manager">{userRoleLabel("manager")}</option>
               <option value="planning">{userRoleLabel("planning")}</option>
               <option value="master">{userRoleLabel("master")}</option>
             </select>
           </label>
+          {roleUsesAllBranches(form.role) ? (
+            <section className="all-branch-notice">
+              <strong>{labels.affiliation}</strong>
+              <span>全拠点対象のため、拠点選択は不要です。</span>
+            </section>
+          ) : (
+            <fieldset className="master-field user-branch-field">
+              <legend>{labels.affiliation}</legend>
+              <div className="master-check-grid user-branch-grid">
+                {enabledBranches.map((branch) => {
+                  const selectedBranchIds = branchIdsFromValue(form);
+                  const checked = selectedBranchIds.includes(branch.id);
+                  return (
+                    <label className="master-check" key={branch.id}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(event) => {
+                          updateFormBranchIds(
+                            event.target.checked
+                              ? [...selectedBranchIds, branch.id]
+                              : selectedBranchIds.filter((branchId) => branchId !== branch.id)
+                          );
+                        }}
+                      />
+                      {branch.name}
+                    </label>
+                  );
+                })}
+              </div>
+              <p className="small">{labels.multiBranchHint}</p>
+            </fieldset>
+          )}
           <label>
             {labels.notes}
             <textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
@@ -421,7 +443,7 @@ export default function UserAdmin({ embedded = false }: { embedded?: boolean }) 
                     <tr key={user.uid}>
                       <td>{user.name}</td>
                       <td>{user.email}</td>
-                      <td>{branchNameText(branchIdsFromValue(user)) || user.department || "-"}</td>
+                      <td>{userAffiliationText(user)}</td>
                       <td>{userRoleLabel(user.role)}</td>
                       <td>
                         <span className="status-chip">{statusLabel(user.status)}</span>

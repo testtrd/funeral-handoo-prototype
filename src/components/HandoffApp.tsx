@@ -24,7 +24,20 @@ import {
   unionMemberTypeQuestion
 } from "@/lib/master";
 import { getBranches, getExtraQuestions, getVendorMap, getVendorRule, type ExtraQuestion } from "@/lib/masterDataService";
-import { getNetworkStatus, saveHandoffProgress, saveHandoffRecord, type HandoffRecordStatus, type HandoffSyncStatus } from "@/lib/handoffStorage";
+import {
+  acquireHandoffEditLock,
+  getActiveEditLock,
+  getHandoffRecordById,
+  getNetworkStatus,
+  isRecordEditedByOther,
+  releaseHandoffEditLock,
+  saveHandoffProgress,
+  saveHandoffRecord,
+  subscribeHandoffRecords,
+  touchHandoffEditLock,
+  type HandoffRecordStatus,
+  type HandoffSyncStatus
+} from "@/lib/handoffStorage";
 import { hasJsonContent, safeJsonParse } from "@/lib/safeJson";
 import type { DeathDateValue, EraDateValue, HandoffData, MonthDayTimeValue } from "@/types/form";
 
@@ -906,6 +919,7 @@ export default function HandoffApp() {
   const [loaded, setLoaded] = useState(false);
   const [persistDraft, setPersistDraft] = useState(false);
   const [recordId, setRecordId] = useState<string | null>(null);
+  const [readOnlyLockMessage, setReadOnlyLockMessage] = useState("");
   const [sendingFamilyCopy, setSendingFamilyCopy] = useState(false);
   const [familyCopySyncStatus, setFamilyCopySyncStatus] = useState<HandoffSyncStatus | "">("");
   const relativePdfRef = useRef<HTMLDivElement>(null);
@@ -914,6 +928,7 @@ export default function HandoffApp() {
   const currentUser = getCurrentUser();
 
   bindData = (path: string, value: unknown) => {
+    if (readOnlyLockMessage) return;
     setPersistDraft(true);
     setData((current) => setByPath(current, path, value));
   };
@@ -944,6 +959,11 @@ export default function HandoffApp() {
       setPersistDraft(true);
     }
     if (editingRecordId) {
+      const lockedRecord = acquireHandoffEditLock(editingRecordId);
+      if (lockedRecord && isRecordEditedByOther(lockedRecord, currentUser)) {
+        const lock = getActiveEditLock(lockedRecord);
+        setReadOnlyLockMessage(lock ? `${lock.editingByName}さんが編集中です。編集する場合は「編集を引き継ぐ」を押してください。` : "");
+      }
       setRecordId(editingRecordId);
       window.localStorage.removeItem(editingRecordIdKey);
     }
@@ -1465,6 +1485,7 @@ function persistFamilyCopyData(nextData: HandoffData, idOverride?: string | null
   function clearDraft() {
     const ok = window.confirm("入力途中のデータを破棄して、新しく作成します。よろしいですか？");
     if (!ok) return;
+    if (recordId) releaseHandoffEditLock(recordId);
     window.localStorage.removeItem(storageKey);
     window.localStorage.removeItem(editingStepKey);
     window.localStorage.removeItem(editingRecordIdKey);
@@ -1490,30 +1511,39 @@ function persistFamilyCopyData(nextData: HandoffData, idOverride?: string | null
   }
 
   function saveDataSnapshot(nextData: HandoffData, status: HandoffRecordStatus = "入力中", pdfGenerated = false) {
+    if (readOnlyLockMessage) return;
     setPersistDraft(true);
     setData(nextData);
-    const record = saveHandoffProgress(nextData, {
-      id: recordId || undefined,
-      status,
-      pdfGenerated,
-      currentStep: step,
-      currentStepName: steps[step] || "",
-      progressPercent: progressPercentForStep(step)
-    });
-    setRecordId(record.id);
+    try {
+      const record = saveHandoffProgress(nextData, {
+        id: recordId || undefined,
+        status,
+        pdfGenerated,
+        currentStep: step,
+        currentStepName: steps[step] || "",
+        progressPercent: progressPercentForStep(step)
+      });
+      setRecordId(record.id);
+    } catch (error) {
+      setReadOnlyLockMessage(error instanceof Error ? error.message : "他の担当者が編集中のため保存できません。");
+    }
   }
 
   function saveProgressSnapshot(nextData = data, nextStep = step) {
-    if (!loaded || !persistDraft) return;
-    const record = saveHandoffProgress(nextData, {
-      id: recordId || undefined,
-      status: statusForStep(nextStep),
-      pdfGenerated: data.relativeCopy.generated || data.vendorCopy.generated || data.internalCopy.generated,
-      currentStep: nextStep,
-      currentStepName: steps[nextStep] || "",
-      progressPercent: progressPercentForStep(nextStep)
-    });
-    setRecordId(record.id);
+    if (!loaded || !persistDraft || readOnlyLockMessage) return;
+    try {
+      const record = saveHandoffProgress(nextData, {
+        id: recordId || undefined,
+        status: statusForStep(nextStep),
+        pdfGenerated: data.relativeCopy.generated || data.vendorCopy.generated || data.internalCopy.generated,
+        currentStep: nextStep,
+        currentStepName: steps[nextStep] || "",
+        progressPercent: progressPercentForStep(nextStep)
+      });
+      setRecordId(record.id);
+    } catch (error) {
+      setReadOnlyLockMessage(error instanceof Error ? error.message : "他の担当者が編集中のため保存できません。");
+    }
   }
 
   useEffect(() => {
@@ -1527,6 +1557,47 @@ function persistFamilyCopyData(nextData: HandoffData, idOverride?: string | null
     const timer = window.setInterval(() => saveProgressSnapshot(data, step), 10000);
     return () => window.clearInterval(timer);
   }, [data, step, loaded, persistDraft, recordId]);
+
+  useEffect(() => {
+    if (!recordId || readOnlyLockMessage) return;
+    const touch = () => {
+      const record = getHandoffRecordById(recordId);
+      if (record && !getActiveEditLock(record)) {
+        acquireHandoffEditLock(recordId);
+        return;
+      }
+      touchHandoffEditLock(recordId);
+    };
+    touch();
+    const heartbeatTimer = window.setInterval(touch, 30000);
+    const activityEvents = ["click", "keydown", "pointerdown", "touchstart"];
+    let lastTouch = 0;
+    const handleActivity = () => {
+      const now = Date.now();
+      if (now - lastTouch < 10000) return;
+      lastTouch = now;
+      touch();
+    };
+    const handleBeforeUnload = () => releaseHandoffEditLock(recordId);
+    activityEvents.forEach((eventName) => window.addEventListener(eventName, handleActivity, { passive: true }));
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.clearInterval(heartbeatTimer);
+      activityEvents.forEach((eventName) => window.removeEventListener(eventName, handleActivity));
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      releaseHandoffEditLock(recordId);
+    };
+  }, [recordId, readOnlyLockMessage]);
+
+  useEffect(() => {
+    if (!recordId) return;
+    return subscribeHandoffRecords(() => {
+      const latest = getHandoffRecordById(recordId);
+      if (!latest || !isRecordEditedByOther(latest, currentUser)) return;
+      const lock = getActiveEditLock(latest);
+      setReadOnlyLockMessage(lock ? `${lock.editingByName}さんが編集を引き継ぎました。この画面では保存できません。` : "他の担当者が編集中のため保存できません。");
+    }, 5000);
+  }, [recordId, currentUser?.userId]);
 
   async function createRelativeCopyPdf() {
     if (!data.relativeConfirmation.confirmed || !data.relativeConfirmation.signatureDataUrl || !isFamilyCopyDeliveryReady(data.familyCopyDelivery)) {
@@ -1638,7 +1709,17 @@ function persistFamilyCopyData(nextData: HandoffData, idOverride?: string | null
   function saveCompletedRecord() {
     const record = saveHandoffRecord(data, { id: recordId || undefined, status: "業務終了後入力済み", currentStep: step, currentStepName: steps[step] || "" });
     setRecordId(record.id);
+    releaseHandoffEditLock(record.id);
     alert("管理画面へ保存しました。");
+  }
+
+  function takeOverEditLock() {
+    if (!recordId) return;
+    const record = acquireHandoffEditLock(recordId, { takeover: true }) || getHandoffRecordById(recordId);
+    if (!record) return;
+    setReadOnlyLockMessage("");
+    setData(record.data);
+    setPersistDraft(true);
   }
 
   function canMoveNext() {
@@ -1659,6 +1740,7 @@ function persistFamilyCopyData(nextData: HandoffData, idOverride?: string | null
   }
 
   function next() {
+    if (readOnlyLockMessage) return;
     if (!canMoveNext()) return;
     setStep((current) => {
       const nextStep = Math.min(current + 1, steps.length - 1);
@@ -1679,6 +1761,7 @@ function persistFamilyCopyData(nextData: HandoffData, idOverride?: string | null
   }
 
   function back() {
+    if (readOnlyLockMessage) return;
     setStep((current) => {
       const previousStep = Math.max(current - 1, 0);
       saveProgressSnapshot(data, previousStep);
@@ -1694,6 +1777,15 @@ function persistFamilyCopyData(nextData: HandoffData, idOverride?: string | null
         </div>
       </header>
       <SyncStatusBanner />
+      {readOnlyLockMessage ? (
+        <section className="edit-lock-notice no-print" aria-live="polite">
+          <div>
+            <strong>閲覧専用で開いています</strong>
+            <p>{readOnlyLockMessage}</p>
+          </div>
+          <button type="button" className="primary" onClick={takeOverEditLock}>編集を引き継ぐ</button>
+        </section>
+      ) : null}
 
       {hasStoredDraft ? (
         <div className="resume-panel no-print">
@@ -2212,6 +2304,7 @@ function persistFamilyCopyData(nextData: HandoffData, idOverride?: string | null
                   <button onClick={clearDraft}>新しい業務引継書を作成</button>
                   <button
                     onClick={() => {
+                      if (recordId) releaseHandoffEditLock(recordId);
                       void logout().finally(() => {
                         window.location.href = "/login";
                       });
