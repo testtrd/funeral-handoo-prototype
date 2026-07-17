@@ -1567,6 +1567,112 @@ textarea {
   border-width: 1px;
 }
 
+.relative-ledger-report {
+  width: min(100%, 204mm);
+  margin: 0 auto;
+  padding: 7mm;
+  box-sizing: border-box;
+  background: #fff;
+  color: #111;
+  font-family: "Yu Gothic", "Meiryo", system-ui, sans-serif;
+}
+
+.relative-ledger-title {
+  display: grid;
+  grid-template-columns: 24mm 1fr;
+  align-items: end;
+  gap: 8px;
+  margin-bottom: 4px;
+  color: #111;
+}
+
+.relative-ledger-title span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18mm;
+  height: 18mm;
+  border: 1px solid #333;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.relative-ledger-title strong {
+  text-align: center;
+  font-size: 20px;
+  letter-spacing: 0;
+}
+
+.relative-ledger-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  border: 2px solid #333;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.relative-ledger-table th,
+.relative-ledger-table td {
+  border: 1px solid #333;
+  padding: 3px 5px;
+  vertical-align: middle;
+  overflow-wrap: anywhere;
+}
+
+.relative-ledger-table th {
+  background: #f3f3f3;
+  font-weight: 700;
+  text-align: center;
+}
+
+.relative-ledger-table .vertical {
+  writing-mode: vertical-rl;
+  letter-spacing: 0.12em;
+}
+
+.relative-side {
+  width: 9mm;
+}
+
+.relative-large {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.relative-large strong {
+  font-size: 15px;
+}
+
+.relative-kana {
+  min-height: 12px;
+  border-bottom: 1px dotted #aaa;
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.relative-inline-note {
+  margin-left: 12px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.relative-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+.relative-ledger-table .paper-choice-marks,
+.relative-ledger-table .status-choice-marks {
+  gap: 6px;
+}
+
+.relative-ledger-table .circle-selected::after {
+  inset: -3px -5px;
+}
+
 .pdf-download-source .relative-copy-report .paper-title {
   margin-bottom: 6px;
 }
@@ -2445,6 +2551,25 @@ textarea {
     padding: 0;
     margin: 0 auto;
     box-shadow: none;
+  }
+
+  .relative-ledger-report {
+    border: 0;
+    width: 196mm;
+    min-height: auto;
+    padding: 0;
+    margin: 0 auto;
+    box-shadow: none;
+    break-inside: avoid;
+  }
+
+  .relative-ledger-table {
+    font-size: 10.5px;
+  }
+
+  .relative-ledger-table th,
+  .relative-ledger-table td {
+    padding: 2px 4px;
   }
 
   .privacy-consent-print {
