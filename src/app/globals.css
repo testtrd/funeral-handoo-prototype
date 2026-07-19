@@ -1570,11 +1570,14 @@ textarea {
 .relative-ledger-report {
   width: min(100%, 204mm);
   margin: 0 auto;
-  padding: 7mm;
+  padding: 5mm;
   box-sizing: border-box;
   background: #fff;
   color: #111;
   font-family: "Yu Gothic", "Meiryo", system-ui, sans-serif;
+  overflow: hidden;
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
 
 .relative-ledger-title {
@@ -1609,16 +1612,53 @@ textarea {
   border-collapse: collapse;
   table-layout: fixed;
   border: 2px solid #333;
-  font-size: 11px;
-  line-height: 1.2;
+  font-size: 11.8px;
+  line-height: 1.18;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.relative-ledger-col {
+  width: 10%;
+}
+
+.relative-ledger-table col:nth-child(1) {
+  width: 7%;
+}
+
+.relative-ledger-table col:nth-child(2) {
+  width: 9%;
+}
+
+.relative-ledger-table col:nth-child(3),
+.relative-ledger-table col:nth-child(4),
+.relative-ledger-table col:nth-child(7),
+.relative-ledger-table col:nth-child(8),
+.relative-ledger-table col:nth-child(9),
+.relative-ledger-table col:nth-child(10) {
+  width: 11%;
+}
+
+.relative-ledger-table col:nth-child(5),
+.relative-ledger-table col:nth-child(6) {
+  width: 9%;
 }
 
 .relative-ledger-table th,
 .relative-ledger-table td {
   border: 1px solid #333;
-  padding: 3px 5px;
+  box-sizing: border-box;
+  padding: 2px 4px;
   vertical-align: middle;
+  overflow: hidden;
   overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.relative-ledger-table tr {
+  height: 7.8mm;
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
 
 .relative-ledger-table th {
@@ -1652,6 +1692,33 @@ textarea {
   font-weight: 500;
 }
 
+.relative-person-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.relative-person-main {
+  min-width: 0;
+}
+
+.relative-person-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 1px;
+  min-width: 25mm;
+  max-width: 38mm;
+  padding-right: 2px;
+  font-size: 10.5px;
+  line-height: 1.12;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .relative-inline-note {
   margin-left: 12px;
   font-size: 11px;
@@ -1664,13 +1731,129 @@ textarea {
   gap: 8px 14px;
 }
 
+.relative-doc-row,
+.relative-ledger-table .relative-doc-row th,
+.relative-ledger-table .relative-doc-row td {
+  height: 7.8mm;
+}
+
+.relative-confirm-row,
+.relative-ledger-table .relative-confirm-row th,
+.relative-ledger-table .relative-confirm-row td {
+  height: 7.8mm;
+}
+
+.relative-confirm-row .paper-choice-marks {
+  margin-left: 0;
+}
+
+.not-applicable,
+.not-applicable .paper-choice-marks span,
+.not-applicable.paper-choice-marks span {
+  color: inherit;
+  text-decoration-line: line-through;
+  text-decoration-thickness: 1px;
+  text-decoration-color: currentColor;
+}
+
+.relative-representative-row,
+.relative-ledger-table .relative-representative-row th,
+.relative-ledger-table .relative-representative-row td {
+  height: 6.4mm;
+}
+
+.relative-cremation-flow-row,
+.relative-ledger-table .relative-cremation-flow-row th,
+.relative-ledger-table .relative-cremation-flow-row td {
+  height: 7.8mm;
+}
+
+.relative-ledger-table .relative-status-cell,
+.relative-ledger-table .relative-shared-status {
+  padding-left: 2px;
+  padding-right: 2px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.relative-ledger-table .relative-status-cell .status-choice-marks,
+.relative-ledger-table .relative-shared-status .status-choice-marks {
+  width: 100%;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  margin: 0 auto;
+}
+
+.relative-doc-inline {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 2mm;
+  align-items: center;
+  width: 100%;
+}
+
+.relative-doc-inline > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: visible;
+}
+
 .relative-ledger-table .paper-choice-marks,
 .relative-ledger-table .status-choice-marks {
-  gap: 6px;
+  gap: 4px;
 }
 
 .relative-ledger-table .circle-selected::after {
-  inset: -3px -5px;
+  inset: -2px -4px;
+  border-width: 1.3px;
+}
+
+.relative-remarks-row,
+.relative-ledger-table .relative-remarks-row th,
+.relative-ledger-table .relative-remarks-row td {
+  height: 24mm;
+}
+
+.relative-ledger-table .relative-remarks-row td {
+  padding: 5px 7px;
+  vertical-align: top;
+  text-align: left;
+  line-height: 1.24;
+}
+
+.relative-signature-row,
+.relative-ledger-table .relative-signature-row th,
+.relative-ledger-table .relative-signature-row td {
+  height: 18mm;
+}
+
+.relative-signature-row .paper-signature-row {
+  grid-template-columns: minmax(0, 1fr) 42mm;
+  gap: 2mm;
+  height: 15mm;
+  align-items: stretch;
+}
+
+.relative-signature-row .paper-signature-image,
+.relative-signature-row .paper-work-times {
+  min-height: 0;
+  height: 15mm;
+}
+
+.relative-signature-row .signature-image {
+  max-width: 100%;
+  max-height: 14mm;
+  object-fit: contain;
+}
+
+.relative-signature-row .paper-work-times {
+  padding-left: 2mm;
+  font-size: 9px;
+  line-height: 1.1;
 }
 
 .pdf-download-source .relative-copy-report .paper-title {
@@ -2555,21 +2738,108 @@ textarea {
 
   .relative-ledger-report {
     border: 0;
-    width: 196mm;
-    min-height: auto;
+    width: 204mm;
+    height: 291mm;
+    max-height: 291mm;
     padding: 0;
     margin: 0 auto;
     box-shadow: none;
+    overflow: hidden;
     break-inside: avoid;
+    page-break-inside: avoid;
+    transform: none;
+    zoom: 1;
   }
 
   .relative-ledger-table {
-    font-size: 10.5px;
+    table-layout: fixed;
+    font-size: 11.2px;
+    line-height: 1.12;
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 
   .relative-ledger-table th,
   .relative-ledger-table td {
-    padding: 2px 4px;
+    box-sizing: border-box;
+    padding: 1.4px 3px;
+    overflow: hidden;
+  }
+
+  .relative-ledger-table tr {
+    height: 7.2mm;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .relative-ledger-table .relative-doc-row,
+  .relative-ledger-table .relative-doc-row th,
+  .relative-ledger-table .relative-doc-row td {
+    height: 7.2mm;
+  }
+
+  .relative-ledger-table .relative-confirm-row,
+  .relative-ledger-table .relative-confirm-row th,
+  .relative-ledger-table .relative-confirm-row td {
+    height: 7.2mm;
+  }
+
+  .relative-ledger-table .relative-representative-row,
+  .relative-ledger-table .relative-representative-row th,
+  .relative-ledger-table .relative-representative-row td {
+    height: 5.8mm;
+  }
+
+  .relative-ledger-table .relative-cremation-flow-row,
+  .relative-ledger-table .relative-cremation-flow-row th,
+  .relative-ledger-table .relative-cremation-flow-row td {
+    height: 7.2mm;
+  }
+
+  .relative-ledger-table .relative-remarks-row,
+  .relative-ledger-table .relative-remarks-row th,
+  .relative-ledger-table .relative-remarks-row td {
+    height: 22mm;
+  }
+
+  .relative-ledger-table .relative-remarks-row td {
+    padding: 3px 5px;
+    line-height: 1.18;
+  }
+
+  .relative-doc-inline {
+    gap: 1.4mm;
+  }
+
+  .relative-ledger-table .paper-choice-marks,
+  .relative-ledger-table .status-choice-marks {
+    gap: 3px;
+  }
+
+  .relative-ledger-table .circle-selected::after {
+    inset: -1.5px -3px;
+    border-width: 1.1px;
+  }
+
+  .relative-ledger-table .relative-signature-row,
+  .relative-ledger-table .relative-signature-row th,
+  .relative-ledger-table .relative-signature-row td {
+    height: 15mm;
+  }
+
+  .relative-signature-row .paper-signature-row {
+    grid-template-columns: minmax(0, 1fr) 40mm;
+    gap: 1.6mm;
+    height: 12.5mm;
+  }
+
+  .relative-signature-row .paper-signature-image,
+  .relative-signature-row .paper-work-times {
+    height: 12.5mm;
+  }
+
+  .relative-signature-row .signature-image {
+    max-height: 12mm;
   }
 
   .privacy-consent-print {

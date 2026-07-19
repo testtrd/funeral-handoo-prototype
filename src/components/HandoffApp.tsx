@@ -2636,6 +2636,18 @@ export function RelativeCopyReport({ data }: { data: HandoffData }) {
         <strong>{`業務引継書（${vendor?.name || "業者未選択"}）`}</strong>
       </div>
       <table className="relative-ledger-table">
+        <colgroup>
+          <col className="relative-ledger-col" />
+          <col className="relative-ledger-col" />
+          <col className="relative-ledger-col" />
+          <col className="relative-ledger-col" />
+          <col className="relative-ledger-col" />
+          <col className="relative-ledger-col" />
+          <col className="relative-ledger-col" />
+          <col className="relative-ledger-col" />
+          <col className="relative-ledger-col" />
+          <col className="relative-ledger-col" />
+        </colgroup>
         <tbody>
           <tr>
             <th rowSpan={3} className="vertical relative-side">{role}</th>
@@ -2677,20 +2689,23 @@ export function RelativeCopyReport({ data }: { data: HandoffData }) {
             <th>住所</th>
             <td colSpan={4} className="relative-large">{deceasedAddressForReport(data, true)}</td>
             <th>死亡日時</th>
-            <td colSpan={4}>{data.deceased.deathDate.displayText}</td>
+            <td colSpan={3}>{data.deceased.deathDate.displayText}</td>
           </tr>
-          <tr>
-            <td colSpan={9} className="relative-inline">
-              <span>死亡診断書 <CircleChoiceMarks label="死亡診断書" value={data.deceased.deathCertificate} options={["有", "無"]} /></span>
-              <span>検案書 <CircleChoiceMarks label="検案書" value={data.deceased.postmortemCertificate} options={["有", "無"]} /></span>
-              <span>処置 <CircleChoiceMarks label="処置" value={data.deceased.treatment} options={["有", "無"]} /></span>
-              <span>ペースメーカー <CircleChoiceMarks label="ペースメーカー" value={data.deceased.pacemaker} options={["有", "無"]} /></span>
+          <tr className="relative-doc-row">
+            <th>書類等</th>
+            <td colSpan={8}>
+              <div className="relative-inline relative-doc-inline">
+                <span>死亡診断書 <CircleChoiceMarks label="死亡診断書" value={data.deceased.deathCertificate} options={["有", "無"]} /></span>
+                <span>検案書 <CircleChoiceMarks label="検案書" value={data.deceased.postmortemCertificate} options={["有", "無"]} /></span>
+                <span>処置 <CircleChoiceMarks label="処置" value={data.deceased.treatment} options={["有", "無"]} /></span>
+                <span>ペースメーカー <CircleChoiceMarks label="ペースメーカー" value={data.deceased.pacemaker} options={["有", "無"]} /></span>
+              </div>
             </td>
           </tr>
           <tr>
             <th>お迎え先</th>
             <td colSpan={9}>
-              住所：{data.transport.pickupAddress || "-"}　名称：{data.transport.pickupName || "-"}　お迎え時間：{[formatEraDate(data.transport.pickupDate), data.transport.pickupTime].filter(Boolean).join(" ") || "-"}
+              住所：{data.transport.pickupAddress || "-"}　{data.transport.pickupName || "-"}　お迎え時間：{[formatEraDate(data.transport.pickupDate), data.transport.pickupTime].filter(Boolean).join(" ") || "-"}
             </td>
           </tr>
           <tr>
@@ -2716,14 +2731,14 @@ export function RelativeCopyReport({ data }: { data: HandoffData }) {
             <th>通夜</th>
             <td colSpan={2}><StatusChoiceMarks value={data.schedule.wakeStatus} /></td>
             <td colSpan={3}>{formatMonthDayTime(data.schedule.wakeDateTime) || "-"} {data.schedule.wakeHope}</td>
-            <th>場所</th>
+            <th>式場名</th>
             <td colSpan={3}>{data.schedule.wakePlace || "-"}</td>
           </tr>
           <tr>
             <th>葬儀</th>
             <td colSpan={2}><StatusChoiceMarks value={data.schedule.funeralStatus} /></td>
             <td colSpan={3}>{formatMonthDayTime(data.schedule.funeralDateTime) || "-"} {data.schedule.funeralHope}</td>
-            <th>場所</th>
+            <th>式場名</th>
             <td colSpan={3}>{data.schedule.funeralPlace || "-"}</td>
           </tr>
           <tr>
@@ -2869,7 +2884,282 @@ export function HandoffReportForm({ formData, debugMode = false }: { formData: H
   return <PaperReport data={formData} debugMode={debugMode} />;
 }
 
+function LedgerBusinessReport({ data, compact = false, debugMode = false }: { data: HandoffData; compact?: boolean; debugMode?: boolean }) {
+  const vendor = getVendorMap()[data.vendorId];
+  const rule = getVendorRule(data.vendorId);
+  const role = data.chiefMourner.role || "喪主・代表者";
+  const ageText = data.deceased.age ? `満${data.deceased.age}歳` : "";
+  const remarks = handoffRemarkLines(data);
+  const coffinText = data.supplies.coffinUsage === "手入力" ? data.supplies.coffinDetail : data.supplies.coffinUsage;
+  const suppliesOther = suppliesOtherText(data);
+  const representativeContactText = data.chiefMourner.preferredContact === "上記以外" ? data.chiefMourner.otherContact.trim() : "";
+  const showRepresentativeContact = Boolean(representativeContactText);
+  const showChiefBirth = Boolean(rule.showMournerBirthDate);
+  const representativeContactDisplay = (() => {
+    if (!showRepresentativeContact) return "";
+    if (data.vendorId !== "famille") return `氏名・続柄・電話番号：${representativeContactText}`;
+    const phoneMatch = representativeContactText.match(/(?:\+?\d|[０-９])[\d０-９+\-ー−―‐\s()（）]{6,}(?:\d|[０-９])/);
+    const phone = phoneMatch?.[0]?.trim() || "";
+    const name = representativeContactText
+      .replace(phoneMatch?.[0] || "", "")
+      .replace(/^(喪主|代表者|配偶者|夫|妻|長男|次男|三男|四男|五男|長女|次女|三女|四女|五女|子|娘|息子|孫|兄|弟|姉|妹|父|母|親族|甥|姪)\s*/u, "")
+      .replace(/[、,／/]+$/u, "")
+      .trim();
+    return `氏名：${name || "-"}　電話番号：${phone || "-"}`;
+  })();
+  const funeralScaleValue = data.vendorQuestions[funeralScaleQuestion] || "";
+  const unionMemberType = data.vendorQuestions[unionMemberTypeQuestion] || "";
+  const membershipValue = unionMemberType
+    ? `${unionMemberType === "非組合員" ? "非会員" : "会員"}（${unionMemberType}）`
+    : data.vendorQuestions[membershipStatusQuestion] || "";
+  const funeralScaleNotApplicable = !rule.showFuneralScale;
+  const membershipNotApplicable = !rule.showMembership;
+  const vendorItemValue = (label: string, value: string) => {
+    if (label === "葬儀規模") {
+      return <CircleChoiceMarks label={label} value={value} options={["一般葬", "家族葬", "その他", "未定"]} />;
+    }
+    if (label === "会員・非会員") {
+      return <CircleChoiceMarks label={label} value={value.replace(/^会員（.+）$/, "会員").replace(/^非会員（.+）$/, "非会員")} options={["会員", "非会員", "不明"]} />;
+    }
+    if (label === "組合員区分") {
+      return <CircleChoiceMarks label={label} value={value} options={["正組合員", "准組合員", "非組合員"]} />;
+    }
+    return value || "-";
+  };
+
+  return (
+    <div className={debugMode ? "paper-report relative-ledger-report paper-report-debug" : "paper-report relative-ledger-report"}>
+      <div className="relative-ledger-title">
+        <span>原本</span>
+        <strong>{`業務引継書（${vendor?.name || "業者未選択"}）`}</strong>
+      </div>
+      <table className="relative-ledger-table">
+        <colgroup>
+          <col className="relative-ledger-col" />
+          <col className="relative-ledger-col" />
+          <col className="relative-ledger-col" />
+          <col className="relative-ledger-col" />
+          <col className="relative-ledger-col" />
+          <col className="relative-ledger-col" />
+          <col className="relative-ledger-col" />
+          <col className="relative-ledger-col" />
+          <col className="relative-ledger-col" />
+          <col className="relative-ledger-col" />
+        </colgroup>
+        <tbody>
+          <tr>
+            <th rowSpan={showRepresentativeContact ? 3 : 2} className="vertical relative-side">{role}</th>
+            <th>氏名</th>
+            <td colSpan={4} className="relative-large">
+              <div className="relative-person-field">
+                <div className="relative-person-main">
+                  <div className="relative-kana">{data.chiefMourner.kana}</div>
+                  <strong>{nameWithHonorific(data.chiefMourner.name)}</strong>
+                </div>
+                {showChiefBirth || data.chiefMourner.relationshipToDeceased ? (
+                  <div className="relative-person-side">
+                    {showChiefBirth ? <span>生年月日：{formatEraDate(data.chiefMourner.birthDate)}</span> : null}
+                    {data.chiefMourner.relationshipToDeceased ? <span>続柄：{data.chiefMourner.relationshipToDeceased}</span> : null}
+                  </div>
+                ) : null}
+              </div>
+            </td>
+            <th>連絡先</th>
+            <td colSpan={3}>
+              <div>自宅：{phoneOrNone(data.chiefMourner.homePhone)}</div>
+              <div>携帯：{phoneOrNone(data.chiefMourner.mobilePhone)}</div>
+            </td>
+          </tr>
+          <tr>
+            <th>住所</th>
+            <td colSpan={8} className="relative-large">{data.chiefMourner.address}</td>
+          </tr>
+          {showRepresentativeContact ? (
+            <tr className="relative-representative-row">
+              <th>代表連絡者</th>
+              <td colSpan={8}>{representativeContactDisplay}</td>
+            </tr>
+          ) : null}
+          <tr>
+            <th rowSpan={3} className="vertical relative-side">故人</th>
+            <th>氏名</th>
+            <td colSpan={4} className="relative-large">
+              <div className="relative-person-field">
+                <div className="relative-person-main">
+                  <div className="relative-kana">{data.deceased.kana}</div>
+                  <strong>{nameWithHonorific(data.deceased.name)}</strong>
+                </div>
+                {data.deceased.relationshipToChief ? (
+                  <div className="relative-person-side">
+                    <span>続柄：{data.deceased.relationshipToChief}</span>
+                  </div>
+                ) : null}
+              </div>
+            </td>
+            <th>性別</th>
+            <td><CircleChoiceMarks label="性別" value={data.deceased.gender} options={["男", "女"]} /></td>
+            <th>生年月日</th>
+            <td>{[formatEraDate(data.deceased.birthDate), ageText].filter(Boolean).join(" ")}</td>
+          </tr>
+          <tr>
+            <th>住所</th>
+            <td colSpan={4} className="relative-large">{deceasedAddressForReport(data, true)}</td>
+            <th>死亡日時</th>
+            <td colSpan={3}>{data.deceased.deathDate.displayText}</td>
+          </tr>
+          <tr className="relative-doc-row">
+            <th>書類等</th>
+            <td colSpan={8}>
+              <div className="relative-inline relative-doc-inline">
+                <span>死亡診断書 <CircleChoiceMarks label="死亡診断書" value={data.deceased.deathCertificate} options={["有", "無"]} /></span>
+                <span>検案書 <CircleChoiceMarks label="検案書" value={data.deceased.postmortemCertificate} options={["有", "無"]} /></span>
+                <span>処置 <CircleChoiceMarks label="処置" value={data.deceased.treatment} options={["有", "無"]} /></span>
+                <span>ペースメーカー <CircleChoiceMarks label="ペースメーカー" value={data.deceased.pacemaker} options={["有", "無"]} /></span>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <th>お迎え先</th>
+            <td colSpan={9}>住所：{data.transport.pickupAddress || "-"}　{data.transport.pickupName || "-"}　お迎え時間：{[formatEraDate(data.transport.pickupDate), data.transport.pickupTime].filter(Boolean).join(" ") || "-"}</td>
+          </tr>
+          <tr>
+            <th>搬送先</th>
+            <td colSpan={9}>{[data.transport.destinationType, data.transport.destinationPlace].filter(Boolean).join(" / ") || "-"}</td>
+          </tr>
+          <tr className="relative-confirm-row">
+            <th>確認事項</th>
+            <th><span className={membershipNotApplicable ? "not-applicable" : undefined}>会員区分</span></th>
+            <td colSpan={4} className={membershipNotApplicable ? "not-applicable" : undefined}>{vendorItemValue("会員・非会員", membershipValue)}</td>
+            <th><span className={funeralScaleNotApplicable ? "not-applicable" : undefined}>葬儀規模</span></th>
+            <td colSpan={3} className={funeralScaleNotApplicable ? "not-applicable" : undefined}>{vendorItemValue("葬儀規模", funeralScaleValue)}</td>
+          </tr>
+          <tr>
+            <th rowSpan={2}>宗教者関連</th>
+            <th>宗旨・宗派</th>
+            <td colSpan={2}>{data.religion.denomination || "-"}</td>
+            <th>宗教者</th>
+            <td colSpan={2}>{shouldShowPriestIdentity(data) ? [data.religion.priestName, data.religion.priestKana].filter(Boolean).join(" / ") || "-" : "-"}</td>
+            <th>区分</th>
+            <td colSpan={2}>{religionCategoryText(data) || "-"}</td>
+          </tr>
+          <tr>
+            <th>連絡状況</th>
+            <td colSpan={4}>{data.religion.hasPriest !== "無" ? data.religion.contactStatus || "-" : "-"}</td>
+            <th>枕経等</th>
+            <td colSpan={3}>{[formatMonthDayTime(data.schedule.pillowSutraDateTime), data.schedule.pillowSutraStatus].filter(Boolean).join(" / ") || "-"}</td>
+          </tr>
+          <tr>
+            <th>通夜</th>
+            <td colSpan={2} className="relative-status-cell"><StatusChoiceMarks value={data.schedule.wakeStatus} /></td>
+            <td colSpan={3}>{formatMonthDayTime(data.schedule.wakeDateTime) || "-"} {data.schedule.wakeHope}</td>
+            <th>場所</th>
+            <td colSpan={3}>{data.schedule.wakePlace || "-"}</td>
+          </tr>
+          <tr>
+            <th>葬儀</th>
+            <td colSpan={2} className="relative-status-cell"><StatusChoiceMarks value={data.schedule.funeralStatus} /></td>
+            <td colSpan={3}>{formatMonthDayTime(data.schedule.funeralDateTime) || "-"} {data.schedule.funeralHope}</td>
+            <th>場所</th>
+            <td colSpan={3}>{data.schedule.funeralPlace || "-"}</td>
+          </tr>
+          <tr className="relative-cremation-flow-row">
+            <th>出棺</th>
+            <td rowSpan={2} colSpan={2} className="relative-shared-status"><StatusChoiceMarks value={data.schedule.crematoriumStatus} /></td>
+            <td colSpan={2}>{formatMonthDayTime(data.schedule.departureDateTime) || "-"}</td>
+            <th>火葬場</th>
+            <td colSpan={2}>{data.schedule.crematoriumName || "-"}</td>
+            <th>予約状況</th>
+            <td><CircleChoiceMarks label="火葬予約" value={data.schedule.cremationReservationStatus} options={["済", "未"]} /></td>
+          </tr>
+          <tr className="relative-cremation-flow-row">
+            <th>火葬</th>
+            <td colSpan={2}>{formatMonthDayTime(data.schedule.cremationDateTime) || "-"}</td>
+            <th>予約番号</th>
+            <td colSpan={2}>{data.schedule.reservationNumber || "-"}</td>
+            <th>待合室</th>
+            <td>{data.schedule.waitingRoom || "-"}</td>
+          </tr>
+          <tr>
+            <th>霊柩車</th>
+            <td colSpan={9}>霊柩車：{data.supplies.hearse || "-"}　車種：{data.supplies.vehicleType || "-"}</td>
+          </tr>
+          <tr>
+            <th>電話連絡</th>
+            <td colSpan={9}>{phoneContactDisplayText(data)}　連絡先：{morningContactText(data) || "-"}</td>
+          </tr>
+          <tr>
+            <th>遺影写真</th>
+            <td colSpan={9}>写真 <CircleChoiceMarks label="遺影写真" value={data.contactAndNotes.portraitPhoto} options={["有", "未定", "無"]} /></td>
+          </tr>
+          <tr>
+            <th>使用品<br />実車距離等</th>
+            <td colSpan={9}>
+              <table className="paper-subtable supplies-subtable supplies-compact">
+                <tbody>
+                  <tr>
+                    <th>布団</th>
+                    <td>{data.supplies.futon}</td>
+                    <th>ドライアイス</th>
+                    <td>{data.supplies.dryIceKg}</td>
+                    <th>枕飾り</th>
+                    <td>{data.supplies.pillowDecorationSet}</td>
+                  </tr>
+                  <tr>
+                    <th>樒</th>
+                    <td>{data.supplies.shikimi}</td>
+                    <th>面布</th>
+                    <td>{data.supplies.faceCloth}</td>
+                    <th>棺</th>
+                    <td>{coffinText}</td>
+                  </tr>
+                  <tr>
+                    <th>木魚リンセット貸出No</th>
+                    <td>{data.supplies.mokugyoSetNo}</td>
+                    <th>搬送距離</th>
+                    <td>{data.postWork.transportDistanceKm ? `${data.postWork.transportDistanceKm}km` : ""}</td>
+                    <th>その他</th>
+                    <td>{suppliesOther}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <th>葬儀社連絡先</th>
+            <td colSpan={9}>{data.contactAndNotes.funeralCompanyContact}</td>
+          </tr>
+          <tr className="relative-remarks-row">
+            <th>備考</th>
+            <td colSpan={9}>{remarks.length ? <ul className="paper-note-list">{remarks.map((item) => <li key={item}>{item}</li>)}</ul> : "なし"}</td>
+          </tr>
+          {!compact ? (
+            <tr className="relative-signature-row">
+              <th>署名</th>
+              <td colSpan={9}>
+                <div className="paper-signature-row">
+                  <div className="paper-signature-image">
+                    {data.relativeConfirmation.signatureDataUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img alt="署名" src={data.relativeConfirmation.signatureDataUrl} className="signature-image" />
+                    ) : "署名未取得"}
+                  </div>
+                  <div className="paper-work-times">
+                    <span>開始 {workStartText(data) || "-"}</span>
+                    <span>終了 {workEndText(data) || "-"}</span>
+                  </div>
+                </div>
+              </td>
+            </tr>
+          ) : null}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export function PaperReport({ data, compact = false, debugMode = false }: { data: HandoffData; compact?: boolean; debugMode?: boolean }) {
+  return <LedgerBusinessReport data={data} compact={compact} debugMode={debugMode} />;
+
   const branch = getBranches().find((item) => item.id === data.branchId);
   const vendor = getVendorMap()[data.vendorId];
   const rule = getVendorRule(data.vendorId);
