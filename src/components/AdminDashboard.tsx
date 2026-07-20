@@ -129,6 +129,7 @@ export default function AdminDashboard() {
     morningContactToRepresentative: false
   });
   const [postWorkDraft, setPostWorkDraft] = useState<HandoffData["postWork"] | null>(null);
+  const [postWorkDirty, setPostWorkDirty] = useState(false);
   const relativePdfRef = useRef<HTMLDivElement>(null);
   const vendorPdfRef = useRef<HTMLDivElement>(null);
   const internalPdfRef = useRef<HTMLDivElement>(null);
@@ -179,6 +180,7 @@ export default function AdminDashboard() {
       morningContactToRepresentative: selected.data.handoffNotes.morningContactToRepresentative
     });
     setPostWorkDraft(structuredClone(selected.data.postWork));
+    setPostWorkDirty(false);
   }, [selected?.id]);
   const filteredRecords = useMemo(() => records.filter((record) => (
     (!filters.branch || record.branchId === filters.branch) &&
@@ -196,6 +198,7 @@ export default function AdminDashboard() {
     (!filters.status || record.status === filters.status)
   )), [filters, records]);
   const selectableRecords = useMemo(() => filteredRecords.filter((record) => selectedRecordIds.includes(record.id)), [filteredRecords, selectedRecordIds]);
+  const postWorkCompletionReady = Boolean(selected?.data.postWork.savedAt) && !postWorkDirty;
 
   function dateStamp() {
     return new Date().toISOString().slice(0, 10).replaceAll("-", "");
@@ -428,6 +431,7 @@ export default function AdminDashboard() {
     const selected = handoffNotesDraft.selectedItems.includes(item)
       ? handoffNotesDraft.selectedItems.filter((value) => value !== item)
       : [...handoffNotesDraft.selectedItems, item];
+    setPostWorkDirty(true);
     setHandoffNotesDraft({
       ...handoffNotesDraft,
       selectedItems: selected,
@@ -439,6 +443,7 @@ export default function AdminDashboard() {
 
   function applySuggestedHandoffNotes(record: HandoffRecord) {
     const next = Array.from(new Set([...handoffNotesDraft.selectedItems, ...suggestedHandoffNoteItems(record.data)]));
+    setPostWorkDirty(true);
     setHandoffNotesDraft({
       ...handoffNotesDraft,
       selectedItems: next,
@@ -483,6 +488,7 @@ export default function AdminDashboard() {
     const updated = saveHandoffRecord(nextData, { id: record.id, status: advanceStatus(record.status, "業務終了後入力済み"), pdfGenerated: record.pdf.generated });
     loadRecords();
     setSelectedId(updated.id);
+    setPostWorkDirty(false);
     alert("業務終了後入力を保存しました。");
   }
 
@@ -491,12 +497,16 @@ export default function AdminDashboard() {
       alert("\u4ed6\u62e0\u70b9\u306e\u6848\u4ef6\u306e\u305f\u3081\u7de8\u96c6\u3067\u304d\u307e\u305b\u3093\u3002");
       return;
     }
+    if (!record.data.postWork.savedAt || postWorkDirty) {
+      alert("入力完了にする前に、左側の保存ボタンで業務終了後入力を保存してください。");
+      return;
+    }
     const nextData = buildPostWorkData(record);
     if (!nextData) return;
-    const updated = saveHandoffRecord(nextData, { id: record.id, status: "完了", pdfGenerated: record.pdf.generated });
+    saveHandoffRecord(nextData, { id: record.id, status: "完了", pdfGenerated: record.pdf.generated });
     loadRecords();
-    setSelectedId(updated.id);
-    alert("入力完了にしました。");
+    alert("入力完了しました。");
+    window.location.href = "/dashboard";
   }
 
   function markInternalCopyStored(record: HandoffRecord) {
@@ -638,7 +648,10 @@ export default function AdminDashboard() {
                 <div className="admin-edit-columns">
                   <label className="admin-edit-field">
                     <span>搬送距離</span>
-                    <input value={postWorkDraft.transportDistanceKm} onChange={(event) => setPostWorkDraft({ ...postWorkDraft, transportDistanceKm: event.target.value })} placeholder="例: 2" />
+                    <input value={postWorkDraft.transportDistanceKm} onChange={(event) => {
+                      setPostWorkDirty(true);
+                      setPostWorkDraft({ ...postWorkDraft, transportDistanceKm: event.target.value });
+                    }} placeholder="例: 2" />
                   </label>
                   <label className="admin-edit-field">
                     <span>業務終了時間</span>
@@ -647,7 +660,10 @@ export default function AdminDashboard() {
                 </div>
                 <label className="admin-edit-field">
                   <span>追加使用品</span>
-                  <textarea rows={3} value={postWorkDraft.additionalSupplies} onChange={(event) => setPostWorkDraft({ ...postWorkDraft, additionalSupplies: event.target.value })} />
+                  <textarea rows={3} value={postWorkDraft.additionalSupplies} onChange={(event) => {
+                    setPostWorkDirty(true);
+                    setPostWorkDraft({ ...postWorkDraft, additionalSupplies: event.target.value });
+                  }} />
                 </label>
                 <div className="admin-suggestion-panel">
                   <h3>上記選択以外の引き継ぎ事項</h3>
@@ -677,10 +693,13 @@ export default function AdminDashboard() {
                     <input
                       type="checkbox"
                       checked={handoffNotesDraft.morningContactToRepresentative}
-                      onChange={(event) => setHandoffNotesDraft({
-                        ...handoffNotesDraft,
-                        morningContactToRepresentative: event.target.checked
-                      })}
+                      onChange={(event) => {
+                        setPostWorkDirty(true);
+                        setHandoffNotesDraft({
+                          ...handoffNotesDraft,
+                          morningContactToRepresentative: event.target.checked
+                        });
+                      }}
                     />
                     <span>朝の連絡は代表者へ</span>
                   </label>
@@ -689,15 +708,26 @@ export default function AdminDashboard() {
                     <textarea
                       rows={4}
                       value={handoffNotesDraft.freeText}
-                      onChange={(event) => setHandoffNotesDraft({ ...handoffNotesDraft, freeText: event.target.value })}
+                      onChange={(event) => {
+                        setPostWorkDirty(true);
+                        setHandoffNotesDraft({ ...handoffNotesDraft, freeText: event.target.value });
+                      }}
                       placeholder="上記の選択項目以外で、業者へ引き継ぐ内容を入力してください"
                     />
                   </label>
                 </div>
                 <p className="small">保存状況: {selected.data.postWork.savedAt ? `${formatDateTime(selected.data.postWork.savedAt)} / ${selected.data.postWork.savedBy.name || "-"}` : "未保存"}</p>
+                {!postWorkCompletionReady ? <p className="small">入力完了にするには、先に左側の保存ボタンで業務終了後入力を保存してください。</p> : null}
                 <div className="admin-button-row">
                   <button onClick={() => savePostWork(selected)}>業務終了後入力・引き継ぎ事項を保存</button>
-                  <button className="primary admin-complete-button" onClick={() => completePostWork(selected)}>入力完了</button>
+                  <button
+                    className="primary admin-complete-button"
+                    onClick={() => completePostWork(selected)}
+                    disabled={!postWorkCompletionReady}
+                    title={postWorkCompletionReady ? undefined : "左側の保存ボタンで保存すると押せます"}
+                  >
+                    入力完了
+                  </button>
                 </div>
               </div>
             ) : <p className="small">業務終了後入力を読み込めませんでした。</p>}
