@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { FileDown, RotateCcw } from "lucide-react";
 import { PointerEvent, useEffect, useMemo, useRef, useState } from "react";
@@ -784,8 +784,8 @@ function suggestedHandoffNoteItems(data: HandoffData) {
 
 function buildValidation(data: HandoffData) {
   const vendor = getVendorMap()[data.vendorId];
-  const rule = getVendorRule(data.vendorId);
-  const requiredExtraQuestions = getExtraQuestions(data.vendorId).filter((question) => question.required);
+  const rule = getVendorRule(data.vendorId, data.branchId);
+  const requiredExtraQuestions = getExtraQuestions(data.vendorId, data.branchId).filter((question) => question.required);
   const death = normalizeDeathDate(data.deceased.deathDate);
   const age = calculateAge(data.deceased.birthDate, data.deceased.deathDate);
   const errors: string[] = [];
@@ -1050,8 +1050,8 @@ export default function HandoffApp() {
   const vendorMap = getVendorMap();
   const branch = branchList.find((item) => item.id === data.branchId);
   const vendor = vendorMap[data.vendorId];
-  const vendorRule = getVendorRule(data.vendorId);
-  const extraQuestions = getExtraQuestions(data.vendorId).filter((question) => ![
+  const vendorRule = getVendorRule(data.vendorId, data.branchId);
+  const extraQuestions = getExtraQuestions(data.vendorId, data.branchId).filter((question) => ![
     externalInquiryQuestion,
     funeralScaleQuestion,
     membershipStatusQuestion,
@@ -2432,11 +2432,11 @@ function religionCategoryText(data: HandoffData) {
 }
 
 function vendorItemRows(data: HandoffData): Array<[string, string]> {
-  const rule = getVendorRule(data.vendorId);
+  const rule = getVendorRule(data.vendorId, data.branchId);
   const membership = data.vendorQuestions[membershipStatusQuestion] || "";
   const unionMemberType = data.vendorQuestions[unionMemberTypeQuestion] || "";
   const membershipText = unionMemberType ? `${unionMemberType === "非組合員" ? "非会員" : "会員"}（${unionMemberType}）` : membership;
-  const extraRows = getExtraQuestions(data.vendorId)
+  const extraRows = getExtraQuestions(data.vendorId, data.branchId)
     .filter((question) => question.showOnConfirm && ![
       externalInquiryQuestion,
       funeralScaleQuestion,
@@ -2844,7 +2844,7 @@ export function InternalStorageReport({ data }: { data: HandoffData }) {
 
 function LedgerBusinessReport({ data, compact = false, debugMode = false }: { data: HandoffData; compact?: boolean; debugMode?: boolean }) {
   const vendor = getVendorMap()[data.vendorId];
-  const rule = getVendorRule(data.vendorId);
+  const rule = getVendorRule(data.vendorId, data.branchId);
   const role = data.chiefMourner.role || "喪主・代表者";
   const ageText = data.deceased.age ? `満${data.deceased.age}歳` : "";
   const remarks = handoffRemarkLines(data);
@@ -3120,7 +3120,7 @@ export function PaperReport({ data, compact = false, debugMode = false }: { data
 
   const branch = getBranches().find((item) => item.id === data.branchId);
   const vendor = getVendorMap()[data.vendorId];
-  const rule = getVendorRule(data.vendorId);
+  const rule = getVendorRule(data.vendorId, data.branchId);
   const showChiefBirth = Boolean(rule.showMournerBirthDate);
   const showVendorItems = Boolean(vendorItemRows(data).length);
   const ageText = data.deceased.age ? `満${data.deceased.age}歳` : "未計算";

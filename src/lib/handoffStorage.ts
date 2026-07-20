@@ -1,4 +1,5 @@
-import { defaultData } from "@/lib/defaultData";
+﻿import { defaultData } from "@/lib/defaultData";
+import { recordChangeHistory } from "@/lib/changeHistoryService";
 import { downloadJsonFile, sanitizeFileName } from "@/lib/downloadService";
 import {
   deleteHandoffRecordFromCloud,
@@ -512,7 +513,7 @@ export function saveHandoffRecord(data: HandoffData, options: SaveHandoffRecordO
   const existing = options.id ? records.find((record) => record.id === options.id) : undefined;
   const branch = getBranches().find((item) => item.id === data.branchId);
   const vendor = getVendorMap()[data.vendorId];
-  const vendorRule = data.vendorId ? getVendorRule(data.vendorId) : null;
+  const vendorRule = data.vendorId ? getVendorRule(data.vendorId, data.branchId) : null;
   const branchName = branch?.name || "未選択";
   const vendorName = vendor?.name || "業者未選択";
   const generated = options.pdfGenerated || existing?.pdf.generated || false;
@@ -569,6 +570,15 @@ export function saveHandoffRecord(data: HandoffData, options: SaveHandoffRecordO
   };
   const nextRecords = existing ? records.map((item) => item.id === record.id ? record : item) : [record, ...records];
   saveRecords(nextRecords);
+  recordChangeHistory({
+    targetType: options.status !== existing?.status ? "caseStatus" : data.postWork.savedAt !== existing?.data.postWork.savedAt ? "postWork" : "case",
+    targetId: record.id,
+    caseId: record.id,
+    fieldName: options.status !== existing?.status ? "status" : "record",
+    beforeValue: existing ? { status: existing.status, updatedAt: existing.updatedAt } : null,
+    afterValue: { status: record.status, updatedAt: record.updatedAt },
+    operation: existing ? "update" : "create"
+  });
   if (cloudAvailable && online) {
     queueCloudSync(record);
   }
@@ -584,8 +594,18 @@ export function updateHandoffRecord(record: HandoffRecord) {
 
 export function deleteHandoffRecord(id: string) {
   if (!canUseStorage()) throw new Error("この環境では削除できません。");
+  const existing = getHandoffRecordById(id);
   const records = getHandoffRecords().filter((record) => record.id !== id);
   saveRecords(records);
+  recordChangeHistory({
+    targetType: "case",
+    targetId: id,
+    caseId: id,
+    fieldName: "record",
+    beforeValue: existing ? { status: existing.status, deceasedName: existing.deceasedName } : null,
+    afterValue: null,
+    operation: "delete"
+  });
   if (isCloudSaveAvailable() && getNetworkStatus() === "online") {
     void deleteHandoffRecordFromCloud(id).catch((error) => {
       console.error("[Firestore sync] deleteDoc failed.", { recordId: id, error });

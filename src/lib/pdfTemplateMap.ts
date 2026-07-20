@@ -1,4 +1,4 @@
-import type { HandoffData } from "@/types/form";
+﻿import type { HandoffData } from "@/types/form";
 import {
   externalInquiryQuestion,
   funeralScaleQuestion,
@@ -58,7 +58,7 @@ const area = (x: number, y: number, width: number, height: number, fontSize = 9,
 const coffinText = (data: HandoffData) => (data.supplies.coffinUsage === "手入力" ? data.supplies.coffinDetail : data.supplies.coffinUsage);
 const shouldShowPriestIdentity = (data: HandoffData) => data.religion.hasPriest !== "無" && data.religion.introductionWanted !== "希望する";
 const vendorQuestionText = (data: HandoffData) => {
-  const rule = getVendorRule(data.vendorId);
+  const rule = getVendorRule(data.vendorId, data.branchId);
   const entries = [
     rule.showFuneralScale ? `${funeralScaleQuestion} ${data.vendorQuestions[funeralScaleQuestion] || ""}` : "",
     rule.showMembership ? `${membershipStatusQuestion} ${data.vendorQuestions[membershipStatusQuestion] || ""}` : "",

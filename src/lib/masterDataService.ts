@@ -9,9 +9,12 @@ import {
   vendors as defaultVendors,
   type VendorConfig
 } from "@/lib/master";
+import { getCurrentUser } from "@/lib/authService";
 import { hasJsonContent, safeJsonParse } from "@/lib/safeJson";
 
 const masterStorageKey = "funeral-handoff-master-data-v1";
+
+export type MasterScope = "global" | "branch";
 
 export type ManagedBranch = {
   id: string;
@@ -36,7 +39,10 @@ export type ManagedVendor = {
 };
 
 export type VendorRule = {
+  id?: string;
   vendorId: string;
+  scope: MasterScope;
+  branchId: string;
   cremationReservationRequired: boolean;
   blockCompletionIfCremationNotReserved: boolean;
   showMournerBirthDate: boolean;
@@ -57,12 +63,18 @@ export type VendorRule = {
   requirePacemaker: boolean;
   showCremationPreCheck: boolean;
   enabled: boolean;
+  isActive?: boolean;
+  disabledAt?: string;
+  disabledBy?: string;
+  updatedBy?: string;
   updatedAt: string;
 };
 
 export type ExtraQuestion = {
   id: string;
   vendorId: string;
+  scope: MasterScope;
+  branchId: string;
   label: string;
   description: string;
   inputType: "text" | "textarea" | "radio" | "checkbox" | "date" | "time" | "number";
@@ -72,7 +84,28 @@ export type ExtraQuestion = {
   showOnVendorPdf: boolean;
   showOnInternalPdf: boolean;
   enabled: boolean;
+  isActive?: boolean;
+  disabledAt?: string;
+  disabledBy?: string;
+  updatedBy?: string;
   sortOrder: number;
+};
+
+export type MasterChangeLog = {
+  id: string;
+  targetType: "case" | "vendorRule" | "extraQuestion" | "vendor" | "branch" | "user" | "systemSetting" | "caseStatus" | "postWork" | "handoffNote";
+  targetId: string;
+  caseId?: string;
+  fieldName: string;
+  beforeValue: unknown;
+  afterValue: unknown;
+  operation: "create" | "update" | "disable" | "restore" | "delete";
+  changedByUserId: string;
+  changedByName: string;
+  changedByRole: string;
+  changedByBranchId: string;
+  changedAt: string;
+  reason?: string;
 };
 
 export type MasterData = {
@@ -80,6 +113,7 @@ export type MasterData = {
   vendors: ManagedVendor[];
   vendorRules: VendorRule[];
   extraQuestions: ExtraQuestion[];
+  changeLogs: MasterChangeLog[];
 };
 
 function canUseStorage() {
@@ -88,6 +122,35 @@ function canUseStorage() {
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function changeLogId() {
+  return `change_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function currentUserMeta() {
+  const user = getCurrentUser();
+  return {
+    changedByUserId: user?.userId || "",
+    changedByName: user?.name || "",
+    changedByRole: user?.role || "",
+    changedByBranchId: user?.branchId || user?.branchIds?.[0] || ""
+  };
+}
+
+function appendChangeLog(
+  data: MasterData,
+  entry: Omit<MasterChangeLog, "id" | "changedAt" | "changedByUserId" | "changedByName" | "changedByRole" | "changedByBranchId">
+) {
+  data.changeLogs = [
+    ...(data.changeLogs || []),
+    {
+      id: changeLogId(),
+      changedAt: nowIso(),
+      ...currentUserMeta(),
+      ...entry
+    }
+  ].slice(-500);
 }
 
 function normalizeBranchIdSeed(name: string) {
@@ -129,7 +192,10 @@ export function optionsToText(options: string[]) {
 
 function defaultRuleForVendor(vendor: VendorConfig): VendorRule {
   return {
+    id: `${vendor.id}_global`,
     vendorId: vendor.id,
+    scope: "global",
+    branchId: "",
     cremationReservationRequired: vendor.requiresCremationReservation,
     blockCompletionIfCremationNotReserved: vendor.requiresCremationReservation,
     showMournerBirthDate: vendor.showChiefMournerBirthDate,
@@ -150,6 +216,7 @@ function defaultRuleForVendor(vendor: VendorConfig): VendorRule {
     requirePacemaker: true,
     showCremationPreCheck: true,
     enabled: true,
+    isActive: true,
     updatedAt: nowIso()
   };
 }
@@ -182,6 +249,8 @@ export function buildDefaultMasterData(): MasterData {
     .map((vendor, index) => ({
       id: `${vendor.id}_external_inquiry`,
       vendorId: vendor.id,
+      scope: "global",
+      branchId: "",
       label: externalInquiryQuestion,
       description: "",
       inputType: "radio",
@@ -191,9 +260,10 @@ export function buildDefaultMasterData(): MasterData {
       showOnVendorPdf: true,
       showOnInternalPdf: true,
       enabled: true,
+      isActive: true,
       sortOrder: 10 + index
     }));
-  return { branches, vendors, vendorRules, extraQuestions };
+  return { branches, vendors, vendorRules, extraQuestions, changeLogs: [] };
 }
 
 function normalizeMasterData(data: Partial<MasterData>): MasterData {
@@ -205,6 +275,11 @@ function normalizeMasterData(data: Partial<MasterData>): MasterData {
     vendors: data.vendors?.length ? data.vendors : base.vendors,
     vendorRules: vendorRules.map((rule) => ({
       ...rule,
+      id: rule.id || `${rule.vendorId}_${rule.scope || "global"}_${rule.branchId || "all"}`,
+      scope: rule.scope || "global",
+      branchId: rule.branchId || "",
+      enabled: rule.enabled !== false && rule.isActive !== false,
+      isActive: rule.isActive !== false && rule.enabled !== false,
       externalInquiryAnswerOptions: rule.vendorId === "ja_yasuragi_center"
         ? (rule.externalInquiryAnswerOptions || []).map(normalizeYasuragiOption)
         : rule.externalInquiryAnswerOptions,
@@ -213,9 +288,19 @@ function normalizeMasterData(data: Partial<MasterData>): MasterData {
         : rule.unionMemberTypeOptions,
       handoffNoteOptions: normalizeHandoffNoteOptions(rule.handoffNoteOptions)
     })),
-    extraQuestions: (data.extraQuestions || base.extraQuestions).map((question) => question.vendorId === "ja_yasuragi_center"
-      ? { ...question, options: question.options.map(normalizeYasuragiOption) }
-      : question)
+    extraQuestions: (data.extraQuestions || base.extraQuestions).map((question) => {
+      const normalized = {
+        ...question,
+        scope: question.scope || "global" as MasterScope,
+        branchId: question.branchId || "",
+        enabled: question.enabled !== false && question.isActive !== false,
+        isActive: question.isActive !== false && question.enabled !== false
+      };
+      return normalized.vendorId === "ja_yasuragi_center"
+        ? { ...normalized, options: normalized.options.map(normalizeYasuragiOption) }
+        : normalized;
+    }),
+    changeLogs: data.changeLogs || []
   };
 }
 
@@ -258,21 +343,25 @@ export function getVendorRules() {
   return getMasterData().vendorRules;
 }
 
-export function getVendorRule(vendorId: string) {
+export function getVendorRule(vendorId: string, branchId = "") {
   const data = getMasterData();
   const fallback = defaultVendors[vendorId] || { ...defaultVendors.famille, id: vendorId, name: vendorId, funeralCompanyContact: "" };
-  return data.vendorRules.find((rule) => rule.vendorId === vendorId) || defaultRuleForVendor(fallback);
+  const activeRules = data.vendorRules.filter((rule) => rule.vendorId === vendorId && rule.enabled !== false && rule.isActive !== false);
+  return activeRules.find((rule) => rule.scope === "branch" && rule.branchId === branchId)
+    || activeRules.find((rule) => (rule.scope || "global") === "global")
+    || defaultRuleForVendor(fallback);
 }
 
-export function getExtraQuestions(vendorId?: string) {
-  const questions = getMasterData().extraQuestions.filter((question) => question.enabled);
+export function getExtraQuestions(vendorId?: string, branchId = "") {
+  const questions = getMasterData().extraQuestions.filter((question) => question.enabled && question.isActive !== false);
   return (vendorId ? questions.filter((question) => question.vendorId === vendorId) : questions)
+    .filter((question) => (question.scope || "global") === "global" || question.branchId === branchId)
     .sort((left, right) => left.sortOrder - right.sortOrder);
 }
 
 export function getVendorMap(): Record<string, VendorConfig> {
   const data = getMasterData();
-  const rules = new Map(data.vendorRules.map((rule) => [rule.vendorId, rule]));
+  const rules = new Map(data.vendorRules.filter((rule) => (rule.scope || "global") === "global" && rule.enabled !== false && rule.isActive !== false).map((rule) => [rule.vendorId, rule]));
   return Object.fromEntries(data.vendors.filter((vendor) => vendor.enabled).map((vendor) => {
     const rule = rules.get(vendor.id);
     const fallback = defaultVendors[vendor.id];
@@ -298,22 +387,27 @@ export function saveBranch(branch: ManagedBranch) {
   const data = getMasterData();
   const now = nowIso();
   const id = branch.id || createBranchId(branch.name, data.branches.map((item) => item.id));
+  const existing = data.branches.find((value) => value.id === id);
   const item = { ...branch, id, updatedAt: now, createdAt: branch.createdAt || now };
   data.branches = data.branches.some((value) => value.id === item.id)
     ? data.branches.map((value) => value.id === item.id ? item : value)
     : [...data.branches, item];
+  appendChangeLog(data, { targetType: "branch", targetId: item.id, fieldName: "branch", beforeValue: existing || null, afterValue: item, operation: existing ? "update" : "create" });
   saveMasterData(data);
 }
 
 export function deleteBranch(id: string) {
   const data = getMasterData();
-  data.branches = data.branches.filter((branch) => branch.id !== id);
+  const existing = data.branches.find((branch) => branch.id === id);
+  data.branches = data.branches.map((branch) => branch.id === id ? { ...branch, enabled: false, updatedAt: nowIso() } : branch);
+  appendChangeLog(data, { targetType: "branch", targetId: id, fieldName: "enabled", beforeValue: existing?.enabled, afterValue: false, operation: "disable" });
   saveMasterData(data);
 }
 
 export function saveVendor(vendor: ManagedVendor) {
   const data = getMasterData();
   const now = nowIso();
+  const existing = data.vendors.find((value) => value.id === vendor.id);
   const item = { ...vendor, updatedAt: now, createdAt: vendor.createdAt || now };
   data.vendors = data.vendors.some((value) => value.id === item.id)
     ? data.vendors.map((value) => value.id === item.id ? item : value)
@@ -327,38 +421,50 @@ export function saveVendor(vendor: ManagedVendor) {
   if (!data.vendorRules.some((rule) => rule.vendorId === item.id)) {
     data.vendorRules.push(defaultRuleForVendor({ ...defaultVendors.famille, id: item.id, name: item.name, funeralCompanyContact: item.funeralCompanyContact }));
   }
+  appendChangeLog(data, { targetType: "vendor", targetId: item.id, fieldName: "vendor", beforeValue: existing || null, afterValue: item, operation: existing ? "update" : "create" });
   saveMasterData(data);
 }
 
 export function deleteVendor(id: string) {
   const data = getMasterData();
-  data.vendors = data.vendors.filter((vendor) => vendor.id !== id);
-  data.vendorRules = data.vendorRules.filter((rule) => rule.vendorId !== id);
-  data.extraQuestions = data.extraQuestions.filter((question) => question.vendorId !== id);
-  data.branches = data.branches.map((branch) => ({ ...branch, vendorIds: branch.vendorIds.filter((vendorId) => vendorId !== id) }));
+  const existing = data.vendors.find((vendor) => vendor.id === id);
+  data.vendors = data.vendors.map((vendor) => vendor.id === id ? { ...vendor, enabled: false, updatedAt: nowIso() } : vendor);
+  data.vendorRules = data.vendorRules.map((rule) => rule.vendorId === id ? { ...rule, enabled: false, isActive: false, disabledAt: nowIso(), disabledBy: currentUserMeta().changedByUserId } : rule);
+  data.extraQuestions = data.extraQuestions.map((question) => question.vendorId === id ? { ...question, enabled: false, isActive: false, disabledAt: nowIso(), disabledBy: currentUserMeta().changedByUserId } : question);
+  appendChangeLog(data, { targetType: "vendor", targetId: id, fieldName: "enabled", beforeValue: existing?.enabled, afterValue: false, operation: "disable" });
   saveMasterData(data);
 }
 
 export function saveVendorRule(rule: VendorRule) {
   const data = getMasterData();
-  const item = { ...rule, updatedAt: nowIso() };
-  data.vendorRules = data.vendorRules.some((value) => value.vendorId === item.vendorId)
-    ? data.vendorRules.map((value) => value.vendorId === item.vendorId ? item : value)
+  const scope = rule.scope || "global";
+  const branchId = scope === "branch" ? rule.branchId : "";
+  const id = rule.id || `${rule.vendorId}_${scope}_${branchId || "all"}`;
+  const existing = data.vendorRules.find((value) => (value.id || `${value.vendorId}_${value.scope || "global"}_${value.branchId || "all"}`) === id);
+  const item = { ...rule, id, scope, branchId, enabled: rule.enabled !== false, isActive: rule.isActive !== false && rule.enabled !== false, updatedAt: nowIso(), updatedBy: currentUserMeta().changedByUserId };
+  data.vendorRules = data.vendorRules.some((value) => (value.id || `${value.vendorId}_${value.scope || "global"}_${value.branchId || "all"}`) === item.id)
+    ? data.vendorRules.map((value) => (value.id || `${value.vendorId}_${value.scope || "global"}_${value.branchId || "all"}`) === item.id ? item : value)
     : [...data.vendorRules, item];
+  appendChangeLog(data, { targetType: "vendorRule", targetId: item.id || item.vendorId, fieldName: "vendorRule", beforeValue: existing || null, afterValue: item, operation: existing ? "update" : "create" });
   saveMasterData(data);
 }
 
 export function saveExtraQuestion(question: ExtraQuestion) {
   const data = getMasterData();
-  data.extraQuestions = data.extraQuestions.some((value) => value.id === question.id)
-    ? data.extraQuestions.map((value) => value.id === question.id ? question : value)
-    : [...data.extraQuestions, question];
+  const existing = data.extraQuestions.find((value) => value.id === question.id);
+  const item = { ...question, scope: question.scope || "global" as MasterScope, branchId: question.scope === "branch" ? question.branchId : "", enabled: question.enabled !== false, isActive: question.isActive !== false && question.enabled !== false, updatedBy: currentUserMeta().changedByUserId };
+  data.extraQuestions = data.extraQuestions.some((value) => value.id === item.id)
+    ? data.extraQuestions.map((value) => value.id === item.id ? item : value)
+    : [...data.extraQuestions, item];
+  appendChangeLog(data, { targetType: "extraQuestion", targetId: item.id, fieldName: "extraQuestion", beforeValue: existing || null, afterValue: item, operation: existing ? "update" : "create" });
   saveMasterData(data);
 }
 
 export function deleteExtraQuestion(id: string) {
   const data = getMasterData();
-  data.extraQuestions = data.extraQuestions.filter((question) => question.id !== id);
+  const existing = data.extraQuestions.find((question) => question.id === id);
+  data.extraQuestions = data.extraQuestions.map((question) => question.id === id ? { ...question, enabled: false, isActive: false, disabledAt: nowIso(), disabledBy: currentUserMeta().changedByUserId } : question);
+  appendChangeLog(data, { targetType: "extraQuestion", targetId: id, fieldName: "enabled", beforeValue: existing?.enabled, afterValue: false, operation: "disable" });
   saveMasterData(data);
 }
 

@@ -54,3 +54,18 @@ export function canManageUsers(user: AuthUser | null | undefined) {
 export function canManageMasters(user: AuthUser | null | undefined) {
   return isActiveUser(user) && user?.role === "master";
 }
+
+export function canManageOperationalSettings(user: AuthUser | null | undefined) {
+  return isActiveUser(user) && (user?.role === "master" || user?.role === "planning" || user?.role === "manager");
+}
+
+export function canEditOperationalSettingForBranch(user: AuthUser | null | undefined, branchId?: string) {
+  if (!isActiveUser(user)) return false;
+  if (user?.role === "master" || user?.role === "planning") return true;
+  if (user?.role === "manager") return Boolean(branchId && userBranchIds(user).includes(branchId));
+  return false;
+}
+
+export function canDisableOperationalSetting(user: AuthUser | null | undefined, branchId?: string) {
+  return canEditOperationalSettingForBranch(user, branchId);
+}

@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AuthStatus } from "@/components/AuthGate";
 import { InternalStorageReport, PaperReport, RelativeCopyReport } from "@/components/HandoffApp";
 import { SyncStatusBanner } from "@/components/SyncStatusBanner";
-import { canDeleteCase, canEditCase, canManageMasters, canViewAllCases, canViewCase } from "@/lib/accessControl";
+import { canDeleteCase, canEditCase, canManageMasters, canManageOperationalSettings, canViewAllCases, canViewCase } from "@/lib/accessControl";
 import { getCurrentUser, type AuthSession } from "@/lib/authService";
 import { createElementPdfBlob, downloadElementAsPdf, sanitizeFileName } from "@/lib/downloadService";
 import { familyCopyDeliveryText } from "@/lib/familyCopyDeliveryService";
@@ -167,6 +167,7 @@ export default function AdminDashboard() {
   const isAdmin = isMaster;
   const canViewAll = canViewAllCases(currentUser);
   const canOpenMasterAdmin = canManageMasters(currentUser);
+  const canOpenOperationSettings = canManageOperationalSettings(currentUser);
   const selectedCanEdit = selected ? canEditCase(currentUser, selected) : false;
 
   useEffect(() => {
@@ -776,8 +777,8 @@ export default function AdminDashboard() {
       <header className="admin-header">
         <div>
           <p className="eyebrow">ダッシュボード</p>
-          <h1>{isAdmin ? "全案件一覧" : "現場案件一覧"}</h1>
-          <p className="small">{isAdmin ? "全拠点・全案件を確認できます。" : "ログイン中アカウントの拠点案件を確認できます。"}</p>
+          <h1>{canViewAll ? "全案件一覧" : "現場案件一覧"}</h1>
+          <p className="small">{canViewAll ? "全拠点・全案件を確認できます。" : "ログイン中アカウントの拠点案件を確認できます。"}</p>
         </div>
         <div className="toolbar">
           <AuthStatus />
@@ -785,7 +786,8 @@ export default function AdminDashboard() {
           <a className="button-link primary" href="/">新規作成</a>
           <a className="button-link" href="#records">案件一覧</a>
           <button onClick={openBulkMode}>PDF保存・印刷・共有</button>
-          {isAdmin ? <a className="button-link" href="/admin/master">設定</a> : null}
+          {canOpenOperationSettings ? <a className="button-link" href="/admin/operations/vendor-rules">業者ルール・追加質問</a> : null}
+          {canOpenMasterAdmin ? <a className="button-link" href="/admin/master">設定</a> : null}
         </div>
       </header>
       <SyncStatusBanner />

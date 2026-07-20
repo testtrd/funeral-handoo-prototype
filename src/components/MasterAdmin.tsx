@@ -3,6 +3,8 @@
 import { Download, Plus, RefreshCw, RotateCcw, Save, Upload } from "lucide-react";
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { AuthStatus } from "@/components/AuthGate";
+import { canDisableOperationalSetting, canEditOperationalSettingForBranch, canManageMasters, userBranchIds } from "@/lib/accessControl";
+import { getCurrentUser } from "@/lib/authService";
 import UserAdmin from "@/components/UserAdmin";
 import {
   buildDefaultMasterData,
@@ -23,6 +25,7 @@ import {
   type ManagedBranch,
   type ManagedVendor,
   type MasterData,
+  type MasterScope,
   type VendorRule
 } from "@/lib/masterDataService";
 
@@ -44,6 +47,11 @@ const sectionLinks: Array<[MasterSection, string]> = [
   ["users", "/admin/master/users"]
 ];
 
+const operationLinks: Array<[MasterSection, string]> = [
+  ["rules", "/admin/operations/vendor-rules"],
+  ["questions", "/admin/operations/questions"]
+];
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -60,6 +68,8 @@ function emptyQuestion(vendorId = ""): ExtraQuestion {
   return {
     id: `question_${Date.now()}`,
     vendorId,
+    scope: "global",
+    branchId: "",
     label: "",
     description: "",
     inputType: "text",
@@ -118,8 +128,11 @@ function TextAreaField({ label, value, onChange, placeholder }: { label: string;
   );
 }
 
-export default function MasterAdmin({ section = "overview" }: { section?: MasterSection }) {
+export default function MasterAdmin({ section = "overview", operationsMode = false }: { section?: MasterSection; operationsMode?: boolean }) {
   const [master, setMaster] = useState<MasterData>(() => getMasterData());
+  const currentUser = getCurrentUser();
+  const isMasterUser = canManageMasters(currentUser);
+  const manageableBranchIds = userBranchIds(currentUser);
   const [branchForm, setBranchForm] = useState<ManagedBranch>(() => emptyBranch());
   const [vendorBranchId, setVendorBranchId] = useState(() => getMasterData().branches[0]?.id || "");
   const [vendorForm, setVendorForm] = useState<ManagedVendor>(() => emptyVendor());
@@ -130,7 +143,9 @@ export default function MasterAdmin({ section = "overview" }: { section?: Master
     return vendorsForBranch(data, branchId)[0]?.id || data.vendors[0]?.id || "";
   });
   const [ruleForm, setRuleForm] = useState<VendorRule | null>(null);
+  const [ruleScope, setRuleScope] = useState<MasterScope>(() => getCurrentUser()?.role === "manager" ? "branch" : "global");
   const [questionBranchId, setQuestionBranchId] = useState(() => getMasterData().branches[0]?.id || "");
+  const [questionScope, setQuestionScope] = useState<MasterScope>(() => getCurrentUser()?.role === "manager" ? "branch" : "global");
   const [questionForm, setQuestionForm] = useState<ExtraQuestion>(() => {
     const data = getMasterData();
     const branchId = data.branches[0]?.id || "";
@@ -138,12 +153,20 @@ export default function MasterAdmin({ section = "overview" }: { section?: Master
   });
   const importRef = useRef<HTMLInputElement>(null);
 
-  const selectedRule = useMemo(() => {
+  const selectedRule = useMemo<VendorRule>(() => {
     const base = buildDefaultMasterData().vendorRules[0];
     if (ruleForm?.vendorId === ruleVendorId) return ruleForm;
-    return master.vendorRules.find((rule) => rule.vendorId === ruleVendorId) || { ...base, vendorId: ruleVendorId };
-  }, [master.vendorRules, ruleForm, ruleVendorId]);
-  const ruleVendors = useMemo(() => vendorsForBranch(master, ruleBranchId), [master, ruleBranchId]);
+    return master.vendorRules.find((rule) => (
+      rule.vendorId === ruleVendorId &&
+      (rule.scope || "global") === ruleScope &&
+      (ruleScope === "global" || rule.branchId === ruleBranchId)
+    )) || { ...base, id: `${ruleVendorId}_${ruleScope}_${ruleScope === "branch" ? ruleBranchId : "all"}`, vendorId: ruleVendorId, scope: ruleScope, branchId: ruleScope === "branch" ? ruleBranchId : "" };
+  }, [master.vendorRules, ruleBranchId, ruleForm, ruleScope, ruleVendorId]);
+  const operationBranches = useMemo(() => {
+    if (currentUser?.role === "manager") return master.branches.filter((branch) => branch.enabled && manageableBranchIds.includes(branch.id));
+    return master.branches.filter((branch) => branch.enabled);
+  }, [currentUser?.role, manageableBranchIds, master.branches]);
+  const ruleVendors = useMemo(() => vendorsForBranch(master, ruleScope === "global" ? "" : ruleBranchId), [master, ruleBranchId, ruleScope]);
 
   useEffect(() => {
     if (!ruleVendors.length) {
@@ -156,7 +179,7 @@ export default function MasterAdmin({ section = "overview" }: { section?: Master
       setRuleForm(null);
     }
   }, [ruleVendors, ruleVendorId]);
-  const questionVendors = useMemo(() => vendorsForBranch(master, questionBranchId), [master, questionBranchId]);
+  const questionVendors = useMemo(() => vendorsForBranch(master, questionScope === "global" ? "" : questionBranchId), [master, questionBranchId, questionScope]);
 
   useEffect(() => {
     if (!questionVendors.length) {
@@ -169,11 +192,11 @@ export default function MasterAdmin({ section = "overview" }: { section?: Master
   }, [questionVendors, questionForm.vendorId]);
   const visibleVendors = useMemo(() => vendorsForBranch(master, vendorBranchId), [master, vendorBranchId]);
   const isVendorSaved = useMemo(() => master.vendors.some((vendor) => vendor.id === vendorForm.id), [master.vendors, vendorForm.id]);
-  const selectedVendorRule = useMemo(() => {
+  const selectedVendorRule = useMemo<VendorRule | null>(() => {
     if (!vendorForm.id) return null;
     const base = buildDefaultMasterData().vendorRules[0];
     if (ruleForm?.vendorId === vendorForm.id) return ruleForm;
-    return master.vendorRules.find((rule) => rule.vendorId === vendorForm.id) || { ...base, vendorId: vendorForm.id };
+    return master.vendorRules.find((rule) => rule.vendorId === vendorForm.id && (rule.scope || "global") === "global") || { ...base, vendorId: vendorForm.id, scope: "global" as MasterScope, branchId: "" };
   }, [master.vendorRules, ruleForm, vendorForm.id]);
   const vendorQuestions = useMemo(() => {
     if (!vendorForm.id) return [];
@@ -188,6 +211,15 @@ export default function MasterAdmin({ section = "overview" }: { section?: Master
       setQuestionForm(emptyQuestion(vendorForm.id));
     }
   }, [section, vendorForm.id, questionForm.vendorId]);
+
+  useEffect(() => {
+    if (currentUser?.role !== "manager") return;
+    setRuleScope("branch");
+    setQuestionScope("branch");
+    const firstBranchId = operationBranches[0]?.id || "";
+    if (firstBranchId && !manageableBranchIds.includes(ruleBranchId)) setRuleBranchId(firstBranchId);
+    if (firstBranchId && !manageableBranchIds.includes(questionBranchId)) setQuestionBranchId(firstBranchId);
+  }, [currentUser?.role, manageableBranchIds, operationBranches, questionBranchId, ruleBranchId]);
 
   function reload() {
     setMaster(getMasterData());
@@ -243,14 +275,18 @@ export default function MasterAdmin({ section = "overview" }: { section?: Master
   }
 
   function submitRule(rule: VendorRule) {
+    const targetBranchId = rule.scope === "branch" ? rule.branchId : "";
+    if (!canEditOperationalSettingForBranch(currentUser, targetBranchId)) return alert("この業者ルールを編集する権限がありません。");
     saveVendorRule(rule);
     reload();
   }
 
   function submitQuestion() {
     if (!questionForm.id || !questionForm.vendorId || !questionForm.label) return alert("質問ID・対象業者・項目名を入力してください。");
-    saveExtraQuestion(questionForm);
-    setQuestionForm(emptyQuestion(questionForm.vendorId));
+    const targetQuestion = { ...questionForm, scope: questionScope, branchId: questionScope === "branch" ? questionBranchId : "" };
+    if (!canEditOperationalSettingForBranch(currentUser, targetQuestion.scope === "branch" ? targetQuestion.branchId : "")) return alert("この追加質問を編集する権限がありません。");
+    saveExtraQuestion(targetQuestion);
+    setQuestionForm({ ...emptyQuestion(questionForm.vendorId), scope: questionScope, branchId: questionScope === "branch" ? questionBranchId : "" });
     reload();
   }
 
@@ -258,7 +294,7 @@ export default function MasterAdmin({ section = "overview" }: { section?: Master
     if (!vendorForm.id) return alert("先に業者を選択してください。");
     const nextQuestion = { ...questionForm, vendorId: vendorForm.id };
     if (!nextQuestion.id || !nextQuestion.label) return alert("質問ID・項目名を入力してください。");
-    saveExtraQuestion(nextQuestion);
+    saveExtraQuestion({ ...nextQuestion, scope: "global", branchId: "" });
     setQuestionForm(emptyQuestion(vendorForm.id));
     reload();
   }
@@ -317,22 +353,22 @@ export default function MasterAdmin({ section = "overview" }: { section?: Master
       <header className="admin-header">
         <div>
           <p className="eyebrow">管理画面</p>
-          <h1>設定</h1>
-          <p className="small">拠点、業者、業者ごとの表示ルールをブラウザ内に保存して管理します。</p>
+          <h1>{operationsMode ? "運用設定" : "設定"}</h1>
+          <p className="small">{operationsMode ? "業者ルールと追加質問を、権限に応じて編集します。" : "拠点、業者、社員、システム設定を管理します。"}</p>
         </div>
         <div className="toolbar">
           <AuthStatus />
           <button onClick={reload}><RefreshCw size={18} /> 更新</button>
-          <button onClick={exportMasterDataJson}><Download size={18} /> JSON出力</button>
-          <button onClick={() => importRef.current?.click()}><Upload size={18} /> JSON読込</button>
-          <button onClick={resetDefault}><RotateCcw size={18} /> デフォルトに戻す</button>
+          {isMasterUser ? <button onClick={exportMasterDataJson}><Download size={18} /> JSON出力</button> : null}
+          {isMasterUser ? <button onClick={() => importRef.current?.click()}><Upload size={18} /> JSON読込</button> : null}
+          {isMasterUser && !operationsMode ? <button onClick={resetDefault}><RotateCcw size={18} /> デフォルトに戻す</button> : null}
           <a className="button-link" href="/dashboard">ダッシュボードへ戻る</a>
           <input ref={importRef} className="hidden-input" type="file" accept="application/json" onChange={importJson} />
         </div>
       </header>
 
       <nav className="master-nav" aria-label="設定メニュー">
-        {sectionLinks.map(([key, href]) => <a key={key} className={section === key ? "active" : ""} href={href}>{sectionLabels[key]}</a>)}
+        {(operationsMode ? operationLinks : sectionLinks).map(([key, href]) => <a key={key} className={section === key ? "active" : ""} href={href}>{sectionLabels[key]}</a>)}
       </nav>
 
       {section === "overview" ? (
@@ -493,9 +529,25 @@ export default function MasterAdmin({ section = "overview" }: { section?: Master
           <h2>業者ルール</h2>
           <div className="master-form">
             <label className="master-field">
+              <span>適用範囲</span>
+              <select
+                value={ruleScope}
+                disabled={currentUser?.role === "manager"}
+                onChange={(event) => {
+                  const nextScope = event.target.value as MasterScope;
+                  setRuleScope(nextScope);
+                  setRuleForm(null);
+                }}
+              >
+                <option value="global">全社共通</option>
+                <option value="branch">拠点別</option>
+              </select>
+            </label>
+            <label className="master-field">
               <span>対象拠点</span>
               <select
                 value={ruleBranchId}
+                disabled={ruleScope === "global"}
                 onChange={(event) => {
                   const nextBranchId = event.target.value;
                   const nextVendors = vendorsForBranch(master, nextBranchId);
@@ -504,7 +556,7 @@ export default function MasterAdmin({ section = "overview" }: { section?: Master
                   setRuleForm(null);
                 }}
               >
-                {master.branches.filter((branch) => branch.enabled).map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+                {operationBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
               </select>
             </label>
             <label className="master-field">
@@ -521,6 +573,7 @@ export default function MasterAdmin({ section = "overview" }: { section?: Master
               </select>
             </label>
             {!ruleVendors.length ? <p className="small">この拠点に紐づく業者がありません。先に「業者」画面で対象拠点を設定してください。</p> : null}
+            {ruleScope === "branch" ? <p className="small">このルールは選択中の拠点だけに適用されます。全社共通より優先して使用されます。</p> : <p className="small">このルールは全拠点で使用されます。役職者以上は全社共通ルールを編集できません。</p>}
             <div className="master-check-grid">
               {[
                 ["火葬予約済みを必須にする", "cremationReservationRequired"],
@@ -552,7 +605,16 @@ export default function MasterAdmin({ section = "overview" }: { section?: Master
               onChange={(text) => setRuleForm({ ...selectedRule, handoffNoteOptions: splitOptions(text) })}
               placeholder="例：火葬予約済み"
             />
-            <button className="primary" disabled={!ruleVendorId} onClick={() => { submitRule(selectedRule); setRuleForm(null); }}><Save size={18} /> ルールを保存</button>
+            <button
+              className="primary"
+              disabled={!ruleVendorId || !canEditOperationalSettingForBranch(currentUser, ruleScope === "branch" ? ruleBranchId : "")}
+              onClick={() => {
+                submitRule({ ...selectedRule, scope: ruleScope, branchId: ruleScope === "branch" ? ruleBranchId : "" });
+                setRuleForm(null);
+              }}
+            >
+              <Save size={18} /> ルールを保存
+            </button>
           </div>
         </section>
       ) : null}
@@ -563,10 +625,25 @@ export default function MasterAdmin({ section = "overview" }: { section?: Master
             <h2>追加質問一覧</h2>
             <table className="admin-table compact">
               <thead><tr><th>対象業者</th><th>項目名</th><th>形式</th><th>必須</th><th>状態</th><th></th></tr></thead>
-              <tbody>{master.extraQuestions.map((question) => (
+              <tbody>{master.extraQuestions.filter((question) => (
+                (question.scope || "global") === "global" ||
+                currentUser?.role !== "manager" ||
+                manageableBranchIds.includes(question.branchId)
+              )).map((question) => (
                 <tr key={question.id}>
                   <td>{master.vendors.find((vendor) => vendor.id === question.vendorId)?.name || question.vendorId}</td><td>{question.label}</td><td>{question.inputType}</td><td>{question.required ? "必須" : "-"}</td><td>{question.enabled ? "有効" : "無効"}</td>
-                  <td><button onClick={() => { setQuestionBranchId(branchIdForVendor(master, question.vendorId)); setQuestionForm(question); }}>編集</button><button onClick={() => { deleteExtraQuestion(question.id); reload(); }}>削除</button></td>
+                  <td>
+                    {canEditOperationalSettingForBranch(currentUser, (question.scope || "global") === "branch" ? question.branchId : "") ? (
+                      <>
+                        <button onClick={() => { setQuestionScope(question.scope || "global"); setQuestionBranchId(question.branchId || branchIdForVendor(master, question.vendorId)); setQuestionForm(question); }}>編集</button>
+                        <button onClick={() => {
+                          if (!canDisableOperationalSetting(currentUser, (question.scope || "global") === "branch" ? question.branchId : "")) return alert("この追加質問を無効化する権限がありません。");
+                          deleteExtraQuestion(question.id);
+                          reload();
+                        }}>無効化</button>
+                      </>
+                    ) : <span className="small">閲覧のみ</span>}
+                  </td>
                 </tr>
               ))}</tbody>
             </table>
@@ -576,9 +653,25 @@ export default function MasterAdmin({ section = "overview" }: { section?: Master
             <div className="master-form">
               <TextField label="質問ID" value={questionForm.id} onChange={(id) => setQuestionForm({ ...questionForm, id })} />
               <label className="master-field">
+                <span>適用範囲</span>
+                <select
+                  value={questionScope}
+                  disabled={currentUser?.role === "manager"}
+                  onChange={(event) => {
+                    const nextScope = event.target.value as MasterScope;
+                    setQuestionScope(nextScope);
+                    setQuestionForm({ ...questionForm, scope: nextScope, branchId: nextScope === "branch" ? questionBranchId : "" });
+                  }}
+                >
+                  <option value="global">全社共通</option>
+                  <option value="branch">拠点別</option>
+                </select>
+              </label>
+              <label className="master-field">
                 <span>対象拠点</span>
                 <select
                   value={questionBranchId}
+                  disabled={questionScope === "global"}
                   onChange={(event) => {
                     const nextBranchId = event.target.value;
                     const nextVendors = vendorsForBranch(master, nextBranchId);
@@ -586,7 +679,7 @@ export default function MasterAdmin({ section = "overview" }: { section?: Master
                     setQuestionForm({ ...questionForm, vendorId: nextVendors[0]?.id || "" });
                   }}
                 >
-                  {master.branches.filter((branch) => branch.enabled).map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+                  {operationBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
                 </select>
               </label>
               <label className="master-field">
@@ -613,8 +706,9 @@ export default function MasterAdmin({ section = "overview" }: { section?: Master
                 <BoolField label="社内保管用に表示" checked={questionForm.showOnInternalPdf} onChange={(showOnInternalPdf) => setQuestionForm({ ...questionForm, showOnInternalPdf })} />
                 <BoolField label="有効" checked={questionForm.enabled} onChange={(enabled) => setQuestionForm({ ...questionForm, enabled })} />
               </div>
-              <button className="primary" disabled={!questionForm.vendorId} onClick={submitQuestion}><Save size={18} /> 保存</button>
-              <button onClick={() => setQuestionForm(emptyQuestion(questionVendors[0]?.id || ""))}><Plus size={18} /> 新規入力</button>
+              {questionScope === "branch" ? <p className="small">この追加質問は選択中の拠点だけに表示されます。</p> : <p className="small">この追加質問は全拠点で表示されます。役職者以上は全社共通の追加質問を編集できません。</p>}
+              <button className="primary" disabled={!questionForm.vendorId || !canEditOperationalSettingForBranch(currentUser, questionScope === "branch" ? questionBranchId : "")} onClick={submitQuestion}><Save size={18} /> 保存</button>
+              <button onClick={() => setQuestionForm({ ...emptyQuestion(questionVendors[0]?.id || ""), scope: questionScope, branchId: questionScope === "branch" ? questionBranchId : "" })}><Plus size={18} /> 新規入力</button>
             </div>
           </article>
         </section>
