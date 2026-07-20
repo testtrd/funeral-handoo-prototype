@@ -754,7 +754,6 @@ export default function AdminDashboard() {
           <button onClick={loadRecords}><RefreshCw size={18} /> 更新</button>
           <a className="button-link primary" href="/">新規作成</a>
           <a className="button-link" href="#records">案件一覧</a>
-          <a className="button-link" href="/admin/report-preview">帳票プレビュー</a>
           <button onClick={openBulkMode}>PDF保存・印刷・共有</button>
           {isAdmin ? <a className="button-link" href="/admin/master">設定</a> : null}
         </div>

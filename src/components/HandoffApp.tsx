@@ -2419,13 +2419,6 @@ function privacyConsentText(data: HandoffData) {
   return data.privacyConsent.agreed === true ? "取得済み" : data.privacyConsent.agreed === false ? "不同意" : "未確認";
 }
 
-function privacyConsentInternalText(data: HandoffData) {
-  return [
-    data.privacyConsent.agreed === true ? "同意済み" : data.privacyConsent.agreed === false ? "不同意" : "未確認",
-    data.privacyConsent.consentDate ? `同意日: ${data.privacyConsent.consentDate}` : ""
-  ].filter(Boolean).join(" / ");
-}
-
 function shouldShowPriestIdentity(data: HandoffData) {
   return data.religion.hasPriest !== "無" && data.religion.introductionWanted !== "希望する";
 }
@@ -2825,27 +2818,11 @@ function PrivacyConsentInternalReport({ data }: { data: HandoffData }) {
   return (
     <div className="privacy-consent-print">
       <PrivacyConsentView />
-      <section className="vendor-send-section">
-        <h3>同意取得情報（社内保管用）</h3>
-        <dl className="vendor-send-list">
-          <div>
-            <dt>個人情報同意</dt>
-            <dd>{privacyConsentInternalText(data)}</dd>
-          </div>
-          <div>
-            <dt>氏名</dt>
-            <dd>{signerName || "-"}</dd>
-          </div>
-          <div>
-            <dt>保管区分</dt>
-            <dd>{data.privacyConsent.internalOnly ? "社内保管用" : "-"}</dd>
-          </div>
-          <div>
-            <dt>同意書版</dt>
-            <dd>{data.privacyConsent.consentTextVersion}</dd>
-          </div>
-        </dl>
-        <div className="handoff-memo-box">
+      <section className="privacy-consent-signature-summary">
+        <div>個人情報同意：{data.privacyConsent.agreed === true ? "同意済み" : data.privacyConsent.agreed === false ? "不同意" : "未確認"}</div>
+        <div>同意日：{data.privacyConsent.consentDate || "-"}</div>
+        <div>氏名：{signerName || "-"}</div>
+        <div className="privacy-consent-signature-box">
           {data.privacyConsent.signatureDataUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img alt="署名" src={data.privacyConsent.signatureDataUrl} className="signature-image" />
@@ -2856,32 +2833,13 @@ function PrivacyConsentInternalReport({ data }: { data: HandoffData }) {
   );
 }
 
-function PostWorkInternalReport({ data }: { data: HandoffData }) {
-  return (
-    <section className="vendor-send-section post-work-internal-report">
-      <h3>業務終了後入力（社内確認用）</h3>
-      <dl className="vendor-send-list">
-        <div><dt>開始時間</dt><dd>{workStartText(data) || "-"}</dd></div>
-        <div><dt>搬送距離</dt><dd>{data.postWork.transportDistanceKm ? `${data.postWork.transportDistanceKm}km` : "-"}</dd></div>
-        <div><dt>終了時間</dt><dd>{workEndText(data) || "-"}</dd></div>
-        <div><dt>保存情報</dt><dd>{[data.postWork.savedAt ? displayDateTime(data.postWork.savedAt) : "", data.postWork.savedBy.name].filter(Boolean).join(" / ") || "-"}</dd></div>
-      </dl>
-    </section>
-  );
-}
-
 export function InternalStorageReport({ data }: { data: HandoffData }) {
   return (
     <div className="internal-storage-report">
       <PaperReport data={data} />
-      <PostWorkInternalReport data={data} />
       <PrivacyConsentInternalReport data={data} />
     </div>
   );
-}
-
-export function HandoffReportForm({ formData, debugMode = false }: { formData: HandoffData; debugMode?: boolean }) {
-  return <PaperReport data={formData} debugMode={debugMode} />;
 }
 
 function LedgerBusinessReport({ data, compact = false, debugMode = false }: { data: HandoffData; compact?: boolean; debugMode?: boolean }) {
@@ -2928,7 +2886,7 @@ function LedgerBusinessReport({ data, compact = false, debugMode = false }: { da
   };
 
   return (
-    <div className={debugMode ? "paper-report relative-ledger-report paper-report-debug" : "paper-report relative-ledger-report"}>
+    <div className="paper-report relative-ledger-report">
       <div className="relative-ledger-title">
         <span>原本</span>
         <strong>{`業務引継書（${vendor?.name || "業者未選択"}）`}</strong>
@@ -3185,7 +3143,7 @@ export function PaperReport({ data, compact = false, debugMode = false }: { data
   };
 
   return (
-    <div className={debugMode ? "paper-report paper-report-debug" : "paper-report"}>
+    <div className="paper-report">
       <div className="paper-title">{`業務引継書（${vendor?.name || "業者未選択"}）`}</div>
       <table className="paper-table">
         <colgroup>
