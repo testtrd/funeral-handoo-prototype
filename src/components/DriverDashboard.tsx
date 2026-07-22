@@ -160,7 +160,7 @@ export default function DriverDashboard() {
           <button onClick={loadRecords}><RefreshCw size={18} /> 更新</button>
           <a className="button-link primary" href="/">新規作成</a>
           <a className="button-link" href="/admin">管理画面</a>
-          {canManageMasters(user) ? <a className="button-link" href="/admin/master">設定</a> : null}
+          {canManageMasters(user) ? <a className="button-link" href="/admin/master">マスター設定</a> : null}
         </div>
       </header>
       <SyncStatusBanner />

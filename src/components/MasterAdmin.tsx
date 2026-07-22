@@ -353,7 +353,7 @@ export default function MasterAdmin({ section = "overview", operationsMode = fal
       <header className="admin-header">
         <div>
           <p className="eyebrow">管理画面</p>
-          <h1>{operationsMode ? "運用設定" : "設定"}</h1>
+          <h1>{operationsMode ? "業者ルール・追加質問設定" : "マスター設定"}</h1>
           <p className="small">{operationsMode ? "業者ルールと追加質問を、権限に応じて編集します。" : "拠点、業者、社員、システム設定を管理します。"}</p>
         </div>
         <div className="toolbar">

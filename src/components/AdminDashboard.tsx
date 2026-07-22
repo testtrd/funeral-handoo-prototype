@@ -786,8 +786,8 @@ export default function AdminDashboard() {
           <a className="button-link primary" href="/">新規作成</a>
           <a className="button-link" href="#records">案件一覧</a>
           <button onClick={openBulkMode}>PDF保存・印刷・共有</button>
-          {canOpenOperationSettings ? <a className="button-link" href="/admin/operations/vendor-rules">業者ルール・追加質問</a> : null}
-          {canOpenMasterAdmin ? <a className="button-link" href="/admin/master">設定</a> : null}
+          {canOpenOperationSettings ? <a className="button-link" href="/admin/operations/vendor-rules">業者ルール・追加質問設定</a> : null}
+          {canOpenMasterAdmin ? <a className="button-link" href="/admin/master">マスター設定</a> : null}
         </div>
       </header>
       <SyncStatusBanner />
@@ -848,20 +848,20 @@ export default function AdminDashboard() {
           <tbody>
             {filteredRecords.map((record) => (
               <tr key={record.id} tabIndex={0} onClick={() => setSelectedId(record.id)} onKeyDown={(event) => event.key === "Enter" && setSelectedId(record.id)}>
-                {bulkMode ? <td><input type="checkbox" aria-label={`${record.deceasedName || "未入力"}を選択`} checked={selectedRecordIds.includes(record.id)} onClick={(event) => event.stopPropagation()} onChange={() => toggleRecordSelection(record.id)} /></td> : null}
-                <td><span className="status-chip">{statusDisplay(record.status)}</span></td>
-                <td>{nextActionForRecord(record)}</td>
-                <td><span className={progressPercent(record) < 100 ? "progress-pill incomplete" : "progress-pill"}><span className="progress-fill" style={{ width: `${progressPercent(record)}%` }} /><strong>{progressPercent(record)}%</strong></span></td>
-                <td>
+                {bulkMode ? <td data-label="選択"><input type="checkbox" aria-label={`${record.deceasedName || "未入力"}を選択`} checked={selectedRecordIds.includes(record.id)} onClick={(event) => event.stopPropagation()} onChange={() => toggleRecordSelection(record.id)} /></td> : null}
+                <td data-label="ステータス"><span className="status-chip">{statusDisplay(record.status)}</span></td>
+                <td data-label="次にやる事">{nextActionForRecord(record)}</td>
+                <td data-label="進捗率"><span className={progressPercent(record) < 100 ? "progress-pill incomplete" : "progress-pill"}><span className="progress-fill" style={{ width: `${progressPercent(record)}%` }} /><strong>{progressPercent(record)}%</strong></span></td>
+                <td data-label="同期">
                   <span className={`sync-chip ${record.syncStatus}`} title={record.syncError || syncStatusLabel(record.syncStatus)}>
                     {syncStatusLabel(record.syncStatus)}
                   </span>
                   {record.syncError ? <span className="sync-error-detail">{record.syncError}</span> : null}
                 </td>
-                <td>{renderEditLock(record)}</td>
-                <td>{formatDateTime(record.createdAt)}</td><td>{record.branchName}</td><td>{record.vendorName}</td><td>{record.deceasedName || "-"}</td><td>{record.mournerName || "-"}</td><td>{record.assignedDriver?.name || record.createdBy?.name || "-"}</td>
-                <td>{record.cremationReservationStatus || "-"}</td><td>{record.pdf.generated ? "作成済み" : "未作成"}</td><td>{formatDateTime(record.updatedAt)}</td><td>{updatedByName(record)}</td>
-                <td>
+                <td data-label="編集中">{renderEditLock(record)}</td>
+                <td data-label="受付日時">{formatDateTime(record.createdAt)}</td><td data-label="拠点">{record.branchName}</td><td data-label="業者">{record.vendorName}</td><td data-label="故人氏名">{record.deceasedName || "-"}</td><td data-label="喪主・代表者">{record.mournerName || "-"}</td><td data-label="対応ドライバー">{record.assignedDriver?.name || record.createdBy?.name || "-"}</td>
+                <td data-label="火葬予約">{record.cremationReservationStatus || "-"}</td><td data-label="PDF">{record.pdf.generated ? "作成済み" : "未作成"}</td><td data-label="最終更新">{formatDateTime(record.updatedAt)}</td><td data-label="最終更新者">{updatedByName(record)}</td>
+                <td data-label="操作">
                   <div className="table-actions compact-actions">
                     <button onClick={(event) => { event.stopPropagation(); editRecord(record); }} disabled={isRecordEditedByOther(record, currentUser)}>入力再開</button>
                     {isRecordEditedByOther(record, currentUser) ? <button onClick={(event) => { event.stopPropagation(); takeOverAndEdit(record); }}>編集を引き継ぐ</button> : null}
