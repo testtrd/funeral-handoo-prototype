@@ -467,6 +467,181 @@ textarea {
   font-size: 13px;
 }
 
+.personal-home {
+  display: grid;
+  gap: 16px;
+}
+
+.personal-new-case-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 72px;
+  padding: 16px;
+  border-radius: 8px;
+  background: #164f45;
+  color: white;
+  font-size: 22px;
+  font-weight: 800;
+  text-decoration: none;
+  box-shadow: 0 10px 28px rgba(22, 79, 69, 0.18);
+}
+
+.personal-home-section {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.personal-case-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 12px;
+}
+
+.personal-case-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #c9ddd6;
+  border-radius: 8px;
+  background: #fdfefe;
+}
+
+.personal-case-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+}
+
+.personal-case-card h3 {
+  margin: 2px 0 0;
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.personal-case-meta {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.personal-case-meta div {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.personal-case-meta dt {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.personal-case-meta dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.personal-case-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.personal-empty-state {
+  display: grid;
+  gap: 4px;
+  min-height: 96px;
+  place-items: center;
+  padding: 16px;
+  border: 1px dashed #c9ddd6;
+  border-radius: 8px;
+  background: #f7fbfa;
+  color: #164f45;
+  text-align: center;
+}
+
+.personal-empty-state.compact {
+  min-height: 64px;
+}
+
+.completed-case-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.completed-case-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f7fbfa;
+}
+
+.branch-status-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.branch-status-grid div {
+  display: grid;
+  gap: 4px;
+  padding: 14px;
+  border: 1px solid #c9ddd6;
+  border-radius: 8px;
+  background: #f4fbf8;
+}
+
+.branch-status-grid span {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.branch-status-grid strong {
+  color: #164f45;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.personal-bottom-nav {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  padding: 8px;
+}
+
+.personal-bottom-nav button,
+.personal-bottom-nav a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: #164f45;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.personal-bottom-nav .active {
+  border-color: #164f45;
+  background: #e6f4f0;
+}
+
 .dashboard-detail {
   margin-top: 18px;
 }
@@ -2569,6 +2744,14 @@ textarea {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .personal-case-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .branch-status-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .admin-detail-grid,
   .master-layout,
   .user-admin-grid {
@@ -2815,6 +2998,55 @@ textarea {
 
   .admin-bulk-actions {
     grid-template-columns: 1fr;
+  }
+
+  .personal-new-case-button {
+    width: 100%;
+    min-height: 64px;
+    font-size: 20px;
+  }
+
+  .personal-home-section {
+    padding: 14px;
+  }
+
+  .personal-case-grid,
+  .branch-status-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .personal-case-card-header,
+  .completed-case-list li {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .personal-case-meta div {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
+
+  .personal-case-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .personal-case-actions button {
+    width: 100%;
+  }
+
+  .personal-bottom-nav {
+    position: sticky;
+    bottom: 0;
+    z-index: 19;
+    margin-inline: -12px;
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--line);
+    background: rgba(246, 247, 244, 0.98);
+  }
+
+  .personal-bottom-nav > * {
+    flex: 1 1 0;
   }
 
   .admin-table-wrap {

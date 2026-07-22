@@ -27,6 +27,12 @@ const editLockTimeoutMs = 15 * 60 * 1000;
 export type HandoffRecordStatus = "入力中" | "現場入力完了" | "業務終了後入力済み" | "控え作成済み" | "送信済み" | "完了";
 export type HandoffSyncStatus = "synced" | "offline_pending" | "syncing" | "sync_failed";
 
+function defaultAssignedDriver(createdBy: AuthUser | null) {
+  return createdBy?.role === "staff" || createdBy?.role === "manager"
+    ? { userId: createdBy.userId, name: createdBy.name }
+    : null;
+}
+
 export function getNetworkStatus() {
   if (typeof navigator === "undefined") return "online";
   return navigator.onLine ? "online" : "offline";
@@ -308,7 +314,7 @@ function normalizeRecord(record: HandoffRecord): HandoffRecord {
     submittedAt: record.submittedAt || null,
     createdBy,
     updatedBy: record.updatedBy || null,
-    assignedDriver: record.assignedDriver || (createdBy?.role === "staff" ? { userId: createdBy.userId, name: createdBy.name } : null),
+    assignedDriver: record.assignedDriver || defaultAssignedDriver(createdBy),
     editingByUid: lockExpired ? "" : record.editingByUid || "",
     editingByName: lockExpired ? "" : record.editingByName || "",
     editingStartedAt: lockExpired ? "" : record.editingStartedAt || "",
@@ -485,7 +491,7 @@ export function getHandoffRecords(): HandoffRecord[] {
           submittedAt: record.submittedAt || null,
           createdBy,
           updatedBy: record.updatedBy || null,
-          assignedDriver: record.assignedDriver || (createdBy?.role === "staff" ? { userId: createdBy.userId, name: createdBy.name } : null),
+          assignedDriver: record.assignedDriver || defaultAssignedDriver(createdBy),
           syncStatus: isStaleSyncing(record) ? "offline_pending" : record.syncStatus || "synced",
           lastSavedLocalAt: record.lastSavedLocalAt || record.updatedAt,
           lastSyncedAt: record.lastSyncedAt || null,
@@ -539,7 +545,7 @@ export function saveHandoffRecord(data: HandoffData, options: SaveHandoffRecordO
     submittedAt: status === "送信済み" || status === "完了" ? now : existing?.submittedAt || null,
     createdBy,
     updatedBy: currentUser,
-    assignedDriver: existing?.assignedDriver || (createdBy?.role === "staff" ? { userId: createdBy.userId, name: createdBy.name } : null),
+    assignedDriver: existing?.assignedDriver || defaultAssignedDriver(createdBy),
     editingByUid: existing?.editingByUid || "",
     editingByName: existing?.editingByName || "",
     editingStartedAt: existing?.editingStartedAt || "",

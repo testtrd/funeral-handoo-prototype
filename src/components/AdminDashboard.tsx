@@ -83,10 +83,65 @@ function isRelatedToUser(record: HandoffRecord, userId: string) {
   return record.createdBy?.userId === userId || record.assignedDriver?.userId === userId;
 }
 
+function normalizeComparableText(value: string | undefined | null) {
+  return (value || "").trim().toLowerCase();
+}
+
+function isHandledByUser(record: HandoffRecord, user: AuthSession | null) {
+  if (!user) return false;
+  if (record.assignedDriver?.userId && record.assignedDriver.userId === user.userId) return true;
+  if (record.createdBy?.userId && record.createdBy.userId === user.userId) return true;
+  if (record.updatedBy?.userId && record.updatedBy.userId === user.userId) return true;
+
+  const userName = normalizeComparableText(user.name);
+  return Boolean(userName && [
+    record.assignedDriver?.name,
+    record.createdBy?.name,
+    record.updatedBy?.name
+  ].some((name) => normalizeComparableText(name) === userName));
+}
+
 function userBranchIds(user: ReturnType<typeof getCurrentUser>) {
   if (!user) return [];
   if (Array.isArray(user.branchIds) && user.branchIds.length) return user.branchIds.filter(Boolean);
   return user.branchId ? [user.branchId] : [];
+}
+
+function jstDateKey(value: string | Date | null | undefined) {
+  if (!value) return "";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(date);
+}
+
+function recordTouchedToday(record: HandoffRecord, todayKey: string) {
+  return [record.createdAt, record.updatedAt, record.completedAt, record.submittedAt]
+    .filter(Boolean)
+    .some((value) => jstDateKey(value) === todayKey);
+}
+
+function pickupSortValue(record: HandoffRecord) {
+  const date = record.data.transport.pickupDate || record.createdAt.slice(0, 10);
+  const time = record.data.transport.pickupTime || "23:59";
+  const parsed = new Date(`${date}T${time.length === 5 ? time : "23:59"}:00+09:00`).getTime();
+  return Number.isFinite(parsed) ? parsed : new Date(record.updatedAt).getTime();
+}
+
+function pickupTimeText(record: HandoffRecord) {
+  return [record.data.transport.pickupDate, record.data.transport.pickupTime].filter(Boolean).join(" ") || "-";
+}
+
+function pickupPlaceText(record: HandoffRecord) {
+  return [record.data.transport.pickupName, record.data.transport.pickupAddress].filter(Boolean).join(" / ") || "-";
+}
+
+function destinationText(record: HandoffRecord) {
+  return [record.data.transport.destinationType, record.data.transport.destinationPlace].filter(Boolean).join(" / ") || "-";
 }
 
 function getVendorHandoffNoteOptions(data: HandoffData) {
@@ -115,6 +170,7 @@ export default function AdminDashboard() {
   const [filters, setFilters] = useState({ branch: "", vendor: "", date: "", keyword: "", reservation: "", status: "" });
   const [role, setRole] = useState("");
   const [currentUser, setCurrentUser] = useState<AuthSession | null>(null);
+  const [dashboardView, setDashboardView] = useState<"home" | "list" | null>(null);
   const [printReport, setPrintReport] = useState<"vendor" | "internal">("internal");
   const [printJobs, setPrintJobs] = useState<Array<{ record: HandoffRecord; type: "vendor" | "internal" }>>([]);
   const [pdfJob, setPdfJob] = useState<{ record: HandoffRecord; type: "relative" | "vendor" | "internal" } | null>(null);
@@ -169,6 +225,9 @@ export default function AdminDashboard() {
   const canOpenMasterAdmin = canManageMasters(currentUser);
   const canOpenOperationSettings = canManageOperationalSettings(currentUser);
   const selectedCanEdit = selected ? canEditCase(currentUser, selected) : false;
+  const usesPersonalHome = currentUser?.role === "staff" || currentUser?.role === "manager";
+  const activeDashboardView = dashboardView || (usesPersonalHome ? "home" : "list");
+  const todayKey = jstDateKey(new Date());
 
   useEffect(() => {
     if (!selected) return;
@@ -198,6 +257,25 @@ export default function AdminDashboard() {
     (!filters.reservation || record.cremationReservationStatus === filters.reservation) &&
     (!filters.status || record.status === filters.status)
   )), [filters, records]);
+  const personalRecords = useMemo(() => records.filter((record) => isHandledByUser(record, currentUser)), [records, currentUser]);
+  const personalHomeRecords = useMemo(() => personalRecords.filter((record) => (
+    record.status !== "完了" || recordTouchedToday(record, todayKey)
+  )), [personalRecords, todayKey]);
+  const personalIncompleteRecords = useMemo(() => personalHomeRecords
+    .filter((record) => record.status !== "完了")
+    .sort((a, b) => pickupSortValue(a) - pickupSortValue(b) || new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
+  [personalHomeRecords]);
+  const personalCompletedTodayRecords = useMemo(() => personalHomeRecords
+    .filter((record) => record.status === "完了" && recordTouchedToday(record, todayKey))
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
+  [personalHomeRecords, todayKey]);
+  const ownBranchRecords = useMemo(() => {
+    const branchIds = userBranchIds(currentUser);
+    return branchIds.length ? records.filter((record) => branchIds.includes(record.branchId)) : [];
+  }, [currentUser, records]);
+  const ownBranchActiveCount = ownBranchRecords.filter((record) => record.status !== "完了").length;
+  const ownBranchEditingCount = ownBranchRecords.filter((record) => Boolean(getActiveEditLock(record))).length;
+  const ownBranchWaitingCount = ownBranchRecords.filter((record) => record.status === "現場入力完了").length;
   const selectableRecords = useMemo(() => filteredRecords.filter((record) => selectedRecordIds.includes(record.id)), [filteredRecords, selectedRecordIds]);
   const postWorkCompletionReady = Boolean(selected?.data.postWork.savedAt) && !postWorkDirty;
 
@@ -582,6 +660,7 @@ export default function AdminDashboard() {
   }
 
   function openBulkMode() {
+    setDashboardView("list");
     setBulkMode(true);
     window.setTimeout(() => document.getElementById("pdf-actions")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
   }
@@ -589,6 +668,54 @@ export default function AdminDashboard() {
   function closeBulkMode() {
     setBulkMode(false);
     setSelectedRecordIds([]);
+  }
+
+  function showOwnBranchList() {
+    const firstBranchId = userBranchIds(currentUser)[0] || "";
+    setFilters({ ...filters, branch: firstBranchId });
+    setDashboardView("list");
+    window.setTimeout(() => document.getElementById("records")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+  }
+
+  function renderHomeEditLock(record: HandoffRecord) {
+    const lock = getActiveEditLock(record);
+    if (!lock) return <span className="edit-lock-chip">未編集中</span>;
+    const ownLock = currentUser?.userId === lock.editingByUid;
+    return (
+      <span className="edit-lock-chip active">
+        <strong>{ownLock ? "あなたが編集中" : `${lock.editingByName}さんが編集中`}</strong>
+        <small>最終操作 {formatDateTime(lock.editingHeartbeatAt)}</small>
+      </span>
+    );
+  }
+
+  function renderPersonalCaseCard(record: HandoffRecord) {
+    const canEdit = canEditCase(currentUser, record);
+    const editedByOther = isRecordEditedByOther(record, currentUser);
+    return (
+      <article className="personal-case-card" key={record.id}>
+        <div className="personal-case-card-header">
+          <div>
+            <span className="small">故人名</span>
+            <h3>{record.deceasedName || "未入力"}様</h3>
+          </div>
+          <span className="status-chip">{statusDisplay(record.status)}</span>
+        </div>
+        <dl className="personal-case-meta">
+          <div><dt>お迎え時間</dt><dd>{pickupTimeText(record)}</dd></div>
+          <div><dt>お迎え先</dt><dd>{pickupPlaceText(record)}</dd></div>
+          <div><dt>搬送先</dt><dd>{destinationText(record)}</dd></div>
+          <div><dt>進捗状況</dt><dd>{nextActionForRecord(record)} / {progressPercent(record)}%</dd></div>
+          <div><dt>最終更新</dt><dd>{formatDateTime(record.updatedAt)}</dd></div>
+          <div><dt>編集中</dt><dd>{renderHomeEditLock(record)}</dd></div>
+        </dl>
+        <div className="personal-case-actions">
+          <button className="primary" onClick={() => editRecord(record)} disabled={!canEdit || editedByOther}>入力を再開</button>
+          {editedByOther ? <button onClick={() => takeOverAndEdit(record)} disabled={!canEdit}>編集を引き継ぐ</button> : null}
+          <button onClick={() => setSelectedId(record.id)}>詳細を見る</button>
+        </div>
+      </article>
+    );
   }
 
   if (selected) {
@@ -777,14 +904,19 @@ export default function AdminDashboard() {
       <header className="admin-header">
         <div>
           <p className="eyebrow">ダッシュボード</p>
-          <h1>{canViewAll ? "全案件一覧" : "現場案件一覧"}</h1>
-          <p className="small">{canViewAll ? "全拠点・全案件を確認できます。" : "ログイン中アカウントの拠点案件を確認できます。"}</p>
+          <h1>{activeDashboardView === "home" ? "あなたの案件ホーム" : canViewAll ? "全案件一覧" : "現場案件一覧"}</h1>
+          <p className="small">
+            {activeDashboardView === "home"
+              ? "本日対応した案件と未完了案件を中心に表示します。"
+              : canViewAll ? "全拠点・全案件を確認できます。" : "ログイン中アカウントの拠点案件を確認できます。"}
+          </p>
         </div>
         <div className="toolbar">
           <AuthStatus />
           <button onClick={loadRecords}><RefreshCw size={18} /> 更新</button>
           <a className="button-link primary" href="/">新規作成</a>
-          <a className="button-link" href="#records">案件一覧</a>
+          {usesPersonalHome ? <button onClick={() => setDashboardView("home")}>ホーム</button> : null}
+          <button onClick={() => setDashboardView("list")}>案件一覧</button>
           <button onClick={openBulkMode}>PDF保存・印刷・共有</button>
           {canOpenOperationSettings ? <a className="button-link" href="/admin/operations/vendor-rules">業者ルール・追加質問設定</a> : null}
           {canOpenMasterAdmin ? <a className="button-link" href="/admin/master">マスター設定</a> : null}
@@ -792,6 +924,82 @@ export default function AdminDashboard() {
       </header>
       <SyncStatusBanner />
 
+      {activeDashboardView === "home" ? (
+        <section className="personal-home" aria-label="本人の案件ホーム">
+          <a className="personal-new-case-button" href="/">＋ 新しい案件を作成</a>
+
+          <section className="personal-home-section">
+            <div className="section-title-row">
+              <div>
+                <p className="eyebrow">優先表示</p>
+                <h2>あなたの未完了案件</h2>
+              </div>
+              <span className="status-chip">{personalIncompleteRecords.length}件</span>
+            </div>
+            {personalIncompleteRecords.length ? (
+              <div className="personal-case-grid">
+                {personalIncompleteRecords.map(renderPersonalCaseCard)}
+              </div>
+            ) : (
+              <div className="personal-empty-state">
+                <strong>現在、未完了の案件はありません</strong>
+                <span>新しい案件がある場合は、上のボタンから作成してください。</span>
+              </div>
+            )}
+          </section>
+
+          <section className="personal-home-section">
+            <div className="section-title-row">
+              <div>
+                <p className="eyebrow">本日</p>
+                <h2>今日完了した案件</h2>
+              </div>
+              <span className="status-chip">{personalCompletedTodayRecords.length}件</span>
+            </div>
+            {personalCompletedTodayRecords.length ? (
+              <ul className="completed-case-list">
+                {personalCompletedTodayRecords.slice(0, 6).map((record) => (
+                  <li key={record.id}>
+                    <span>✓ {record.deceasedName || "未入力"}様</span>
+                    <button onClick={() => setSelectedId(record.id)}>詳細を見る</button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="personal-empty-state compact">
+                <strong>本日完了した案件はまだありません</strong>
+              </div>
+            )}
+            {personalCompletedTodayRecords.length > 6 ? <button onClick={() => setDashboardView("list")}>すべて見る</button> : null}
+          </section>
+
+          {currentUser?.role === "manager" ? (
+            <section className="personal-home-section">
+              <div className="section-title-row">
+                <div>
+                  <p className="eyebrow">自拠点</p>
+                  <h2>拠点の状況</h2>
+                </div>
+                <button onClick={showOwnBranchList}>拠点の案件一覧を見る</button>
+              </div>
+              <div className="branch-status-grid">
+                <div><span>対応中</span><strong>{ownBranchActiveCount}件</strong></div>
+                <div><span>編集中</span><strong>{ownBranchEditingCount}件</strong></div>
+                <div><span>確認待ち</span><strong>{ownBranchWaitingCount}件</strong></div>
+              </div>
+            </section>
+          ) : null}
+
+          <nav className="personal-bottom-nav" aria-label="ホーム操作">
+            <button className="active" onClick={() => setDashboardView("home")}>ホーム</button>
+            <button onClick={() => setDashboardView("list")}>案件一覧</button>
+            <a href="/">新規作成</a>
+          </nav>
+        </section>
+      ) : null}
+
+      {activeDashboardView === "list" ? (
+        <>
       <section className="admin-filters" aria-label="一覧の絞り込み">
         <select value={filters.branch} onChange={(event) => setFilters({ ...filters, branch: event.target.value })}>
           <option value="">すべての拠点</option>
@@ -875,6 +1083,8 @@ export default function AdminDashboard() {
           </tbody>
         </table>
       </section>
+        </>
+      ) : null}
 
       <div className="pdf-download-source" aria-hidden="true">
         <div ref={relativePdfRef}>
