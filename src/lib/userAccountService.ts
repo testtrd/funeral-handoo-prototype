@@ -54,6 +54,13 @@ async function authHeaders() {
   };
 }
 
+async function refreshCurrentIdTokenAfterAdminMutation() {
+  const auth = getFirebaseAuth();
+  await auth?.currentUser?.getIdToken(true).catch((error) => {
+    console.warn("[UserAdmin] Failed to refresh ID token after admin API mutation.", error);
+  });
+}
+
 async function requestJson<T>(url: string, init: RequestInit): Promise<T> {
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), 15000);
@@ -93,6 +100,7 @@ export async function createUserAccount(input: CreateUserAccountInput): Promise<
     headers: await authHeaders(),
     body: JSON.stringify(input)
   });
+  await refreshCurrentIdTokenAfterAdminMutation();
   return normalizeUserAccount(result.user);
 }
 
@@ -102,6 +110,7 @@ export async function updateUserAccount(uid: string, input: UpdateUserAccountInp
     headers: await authHeaders(),
     body: JSON.stringify(input)
   });
+  await refreshCurrentIdTokenAfterAdminMutation();
   return normalizeUserAccount(result.user);
 }
 
@@ -111,6 +120,7 @@ export async function updateUserAccountStatus(uid: string, status: UserAccountSt
     headers: await authHeaders(),
     body: JSON.stringify({ status })
   });
+  await refreshCurrentIdTokenAfterAdminMutation();
   return normalizeUserAccount(result.user);
 }
 
@@ -120,9 +130,12 @@ export async function resetUserInitialPassword(uid: string, input: ResetUserPass
     headers: await authHeaders(),
     body: JSON.stringify(input)
   });
+  await refreshCurrentIdTokenAfterAdminMutation();
   return normalizeUserAccount(result.user);
 }
 
 export async function sendUserPasswordReset(email: string) {
   await sendFirebasePasswordReset(email.trim().toLowerCase());
 }
+
+

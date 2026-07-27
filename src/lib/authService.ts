@@ -135,6 +135,25 @@ async function readOrBootstrapUserProfile(uid: string, email: string, fallbackNa
   };
 }
 
+async function syncCurrentUserClaimsAfterLogin() {
+  const token = await getFirebaseCurrentUserIdToken();
+  if (!token) return;
+  const response = await fetch("/api/auth/sync-claims", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`
+    }
+  });
+  const result = await response.json().catch(() => ({})) as { ok?: boolean; message?: string };
+  if (!response.ok || !result.ok) {
+    throw new Error(result.message || "ログイン権限の同期に失敗しました。");
+  }
+  const auth = getFirebaseAuth();
+  await auth?.currentUser?.getIdToken(true).catch((error) => {
+    console.warn("[Auth] Failed to refresh ID token after claim sync.", error);
+  });
+}
 function prototypeLogin(userId: string, password: string): AuthSession | null {
   const user = prototypeUsers.find((item) => item.userId === userId && item.password === password);
   if (!user) return null;
@@ -173,6 +192,8 @@ export async function login(userId: string, password: string): Promise<{ session
       await signOutFirebase().catch(() => undefined);
       return { session: null, error: "\u3053\u306e\u30a2\u30ab\u30a6\u30f3\u30c8\u306f\u5229\u7528\u3067\u304d\u307e\u305b\u3093\u3002" };
     }
+
+    await syncCurrentUserClaimsAfterLogin();
 
     const branchIds = normalizedBranchIds(profile.branchId, profile.branchIds);
     const session: AuthSession = {
@@ -327,3 +348,4 @@ export function getSafePathForUser(user: AuthUser, requestedPath: string | null)
   if (!requestedPath.startsWith("/")) return fallback;
   return canAccessPath(user, requestedPath) ? requestedPath : fallback;
 }
+

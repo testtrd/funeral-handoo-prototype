@@ -17,6 +17,8 @@ type DecodedToken = {
   name?: string;
   role?: string;
   status?: string;
+  branchId?: string;
+  branchIds?: string[];
   admin?: boolean;
 };
 
@@ -50,6 +52,29 @@ function stringArrayFromValue(value: unknown) {
 
 function roleUsesAllBranches(role: AuthRole) {
   return role === "master" || role === "planning";
+}
+
+function claimsForUser(role: AuthRole, status: UserAccountStatus, branchId: string, branchIds: string[]) {
+  const normalizedBranchId = roleUsesAllBranches(role) ? "" : branchId;
+  const normalizedBranchIds = roleUsesAllBranches(role) ? [] : branchIds;
+  return {
+    role,
+    status,
+    branchId: normalizedBranchId,
+    branchIds: normalizedBranchIds
+  };
+}
+
+function claimsMatchUser(decoded: DecodedToken, role: AuthRole, status: UserAccountStatus, branchId: string, branchIds: string[]) {
+  const expected = claimsForUser(role, status, branchId, branchIds);
+  const actualBranchIds = stringArrayFromValue(decoded.branchIds);
+  return (
+    normalizeAuthRole(decoded.role) === expected.role &&
+    statusFromValue(decoded.status) === expected.status &&
+    String(decoded.branchId || "") === expected.branchId &&
+    actualBranchIds.length === expected.branchIds.length &&
+    actualBranchIds.every((value, index) => value === expected.branchIds[index])
+  );
 }
 
 function timestampString(value: unknown, fallback: string) {
@@ -138,6 +163,20 @@ function validateInitialPassword(input: ResetUserPasswordInput) {
   return password;
 }
 
+function userClaimValuesFromProfile(profile: Record<string, unknown> | undefined) {
+  const role = roleFromValue(profile?.role);
+  const status = statusFromValue(profile?.status);
+  const rawBranchIds = stringArrayFromValue(profile?.branchIds);
+  const rawBranchId = String(profile?.branchId || rawBranchIds[0] || "");
+  const branchIds = rawBranchIds.length ? rawBranchIds : rawBranchId ? [rawBranchId] : [];
+  return {
+    role,
+    status,
+    branchId: rawBranchId,
+    branchIds
+  };
+}
+
 function claimsAreMaster(decoded: DecodedToken) {
   const role = normalizeAuthRole(decoded.role);
   return (role === "master" || decoded.admin === true) && decoded.status !== "inactive";
@@ -151,10 +190,24 @@ function safeSuffix(value: string) {
   return value ? value.slice(-6) : "";
 }
 
-async function refreshMasterClaims(auth: AdminAuth, uid: string, reason: "initial-email" | "firestore-profile") {
-  await auth.setCustomUserClaims(uid, { role: "master", status: "active" }).catch((error: unknown) => {
-    console.warn("[Firebase Admin] Admin custom claim could not be refreshed.", { reason, error });
+async function syncUserClaims(auth: AdminAuth, uid: string, role: AuthRole, status: UserAccountStatus, branchId: string, branchIds: string[], reason: string) {
+  const claims = claimsForUser(role, status, branchId, branchIds);
+  await auth.setCustomUserClaims(uid, claims).catch((error: unknown) => {
+    console.warn("[Firebase Admin] Custom claims could not be refreshed.", { reason, uidSuffix: safeSuffix(uid), error });
+    throw error;
   });
+  console.info("[Firebase Admin] Custom claims refreshed.", {
+    reason,
+    uidSuffix: safeSuffix(uid),
+    role: claims.role,
+    status: claims.status,
+    branchId: claims.branchId,
+    branchIdsCount: claims.branchIds.length
+  });
+}
+
+async function refreshMasterClaims(auth: AdminAuth, uid: string, reason: "initial-email" | "firestore-profile" | "claim-shape") {
+  await syncUserClaims(auth, uid, "master", "active", "", [], reason);
 }
 
 async function findUserProfile(db: AdminDb, uid: string, email: string) {
@@ -195,6 +248,62 @@ async function findUserProfile(db: AdminDb, uid: string, email: string) {
   };
 }
 
+export async function syncOwnUserClaims(request: Request) {
+  const header = request.headers.get("authorization") || "";
+  const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
+  if (!token) throw new Error("ログイン状態を確認できません。もう一度ログインしてください。");
+
+  const { auth, db } = getFirebaseAdmin();
+  const decoded = await auth.verifyIdToken(token) as DecodedToken;
+  const email = normalizeEmail(decoded.email || "");
+  const profileResult = await findUserProfile(db, decoded.uid, email);
+  const profile = profileResult.profile;
+  const configuredAdminEmails = adminEmails();
+  const initialAdmin = Boolean(email && configuredAdminEmails.includes(email));
+  const now = new Date().toISOString();
+
+  if (!profile && !initialAdmin) {
+    throw new Error("社員情報が見つかりません。管理者へ確認してください。");
+  }
+
+  const canonicalRef = db.collection("users").doc(decoded.uid);
+  const claimValues = initialAdmin && (!profile || profileResult.docId !== decoded.uid)
+    ? { role: "master" as AuthRole, status: "active" as UserAccountStatus, branchId: "", branchIds: [] }
+    : userClaimValuesFromProfile(profile);
+
+  if (claimValues.status === "inactive") {
+    throw new Error("このアカウントは利用できません。");
+  }
+
+  if (initialAdmin && (!profile || profileResult.docId !== decoded.uid)) {
+    await canonicalRef.set(
+      {
+        uid: decoded.uid,
+        name: String(profile?.name || decoded.name || email || "管理者"),
+        email: email || String(profile?.email || ""),
+        role: "master",
+        status: "active",
+        branchId: "",
+        branchIds: [],
+        updatedAt: now,
+        createdAt: String(profile?.createdAt || now)
+      },
+      { merge: true }
+    );
+  }
+
+  if (!claimsMatchUser(decoded, claimValues.role, claimValues.status, claimValues.branchId, claimValues.branchIds)) {
+    await syncUserClaims(auth, decoded.uid, claimValues.role, claimValues.status, claimValues.branchId, claimValues.branchIds, "sync-own-user");
+  }
+
+  return {
+    ok: true,
+    role: claimValues.role,
+    status: claimValues.status,
+    branchId: claimsForUser(claimValues.role, claimValues.status, claimValues.branchId, claimValues.branchIds).branchId,
+    branchIds: claimsForUser(claimValues.role, claimValues.status, claimValues.branchId, claimValues.branchIds).branchIds
+  };
+}
 export async function requireAdminUser(request: Request) {
   const header = request.headers.get("authorization") || "";
   const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
@@ -229,7 +338,9 @@ export async function requireAdminUser(request: Request) {
     claimRole: decoded.role || "",
     claimStatus: decoded.status || "",
     profileRole: String(profile?.role || ""),
-    profileStatus: String(profile?.status || "")
+    profileStatus: String(profile?.status || ""),
+    claimBranchId: decoded.branchId || "",
+    claimBranchIdsCount: stringArrayFromValue(decoded.branchIds).length
   });
 
   if (initialAdmin || customClaimAdmin || firestoreProfileAdmin) {
@@ -251,6 +362,8 @@ export async function requireAdminUser(request: Request) {
           email: email || String(profile?.email || ""),
           role: "master",
           status: "active",
+          branchId: "",
+          branchIds: [],
           updatedAt: now,
           createdAt: String(profile?.createdAt || now)
         },
@@ -260,8 +373,8 @@ export async function requireAdminUser(request: Request) {
       });
     }
 
-    if (!customClaimAdmin) {
-      await refreshMasterClaims(auth, decoded.uid, initialAdmin ? "initial-email" : "firestore-profile");
+    if (!claimsMatchUser(decoded, "master", "active", "", [])) {
+      await refreshMasterClaims(auth, decoded.uid, !customClaimAdmin ? initialAdmin ? "initial-email" : "firestore-profile" : "claim-shape");
     }
 
     return { decoded, auth, db };
@@ -287,12 +400,7 @@ export async function createEmployeeAccount(request: Request, input: CreateUserA
       displayName: normalized.name,
       disabled: false
     });
-    await auth.setCustomUserClaims(firebaseUser.uid, {
-      role: normalized.role,
-      status: "active",
-      branchId: normalized.branchId,
-      branchIds: normalized.branchIds
-    });
+    await syncUserClaims(auth, firebaseUser.uid, normalized.role, "active", normalized.branchId, normalized.branchIds, "create-employee");
 
     const now = new Date().toISOString();
     const user: UserAccount = {
@@ -333,7 +441,7 @@ export async function setEmployeeAccountStatus(request: Request, uid: string, st
   await auth.updateUser(uid, { disabled: status === "inactive" });
   const branchIds = stringArrayFromValue(currentData.branchIds);
   const branchId = String(currentData.branchId || branchIds[0] || "");
-  await auth.setCustomUserClaims(uid, { role, status, branchId, branchIds: branchIds.length ? branchIds : branchId ? [branchId] : [] });
+  await syncUserClaims(auth, uid, role, status, branchId, branchIds.length ? branchIds : branchId ? [branchId] : [], "set-employee-status");
 
   const now = new Date().toISOString();
   await userRef.update({ status, updatedAt: now });
@@ -398,12 +506,7 @@ export async function updateEmployeeAccount(request: Request, uid: string, input
     displayName: normalized.name,
     disabled: status === "inactive"
   });
-  await auth.setCustomUserClaims(uid, {
-    role: normalized.role,
-    status,
-    branchId: normalized.branchId,
-    branchIds: normalized.branchIds
-  });
+  await syncUserClaims(auth, uid, normalized.role, status, normalized.branchId, normalized.branchIds, "update-employee");
   await userRef.set(
     {
       uid,
@@ -422,3 +525,5 @@ export async function updateEmployeeAccount(request: Request, uid: string, input
   const updated = await userRef.get();
   return userFromDoc(updated);
 }
+
+
