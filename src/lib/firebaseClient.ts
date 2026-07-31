@@ -1,5 +1,6 @@
 import { getApp, getApps, initializeApp, type FirebaseApp, type FirebaseOptions } from "firebase/app";
 import {
+  getIdTokenResult,
   getAuth,
   onAuthStateChanged,
   sendPasswordResetEmail,
@@ -66,7 +67,26 @@ function firebaseConfig(): FirebaseOptions | null {
 async function waitForAuthReady(auth: Auth) {
   const authWithReady = auth as Auth & { authStateReady?: () => Promise<void> };
   if (authWithReady.authStateReady) {
-    await authWithReady.authStateReady();
+    console.info("[Firebase Auth] Waiting for authStateReady.");
+    await new Promise<void>((resolve) => {
+      const timer = window.setTimeout(() => {
+        console.warn("[Firebase Auth] authStateReady timed out while waiting for initial user.");
+        resolve();
+      }, 3000);
+      authWithReady.authStateReady?.()
+        .catch((error) => {
+          console.warn("[Firebase Auth] authStateReady failed.", error);
+        })
+        .finally(() => {
+          window.clearTimeout(timer);
+          resolve();
+        });
+    });
+    console.info("[Firebase Auth] authStateReady resolved.", {
+      uidSuffix: auth.currentUser?.uid ? auth.currentUser.uid.slice(-6) : "",
+      email: auth.currentUser?.email || "",
+      isAnonymous: Boolean(auth.currentUser?.isAnonymous)
+    });
     return;
   }
 
@@ -76,14 +96,34 @@ async function waitForAuthReady(auth: Auth) {
     let unsubscribe: () => void = () => undefined;
     const timer = window.setTimeout(() => {
       unsubscribe();
+      console.warn("[Firebase Auth] onAuthStateChanged timed out while waiting for initial user.");
       resolve();
     }, 3000);
     unsubscribe = onAuthStateChanged(auth, () => {
       window.clearTimeout(timer);
       unsubscribe();
+      console.info("[Firebase Auth] onAuthStateChanged fired.", {
+        uidSuffix: auth.currentUser?.uid ? auth.currentUser.uid.slice(-6) : "",
+        email: auth.currentUser?.email || "",
+        isAnonymous: Boolean(auth.currentUser?.isAnonymous)
+      });
       resolve();
     });
   });
+}
+
+async function withClientTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: number | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = window.setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+      })
+    ]);
+  } finally {
+    if (timer) window.clearTimeout(timer);
+  }
 }
 
 export function getFirebaseDebugInfo() {
@@ -195,6 +235,38 @@ export async function getFirebaseCurrentUserIdToken() {
   }
 
   return user.getIdToken(true);
+}
+
+export async function logFirebaseCurrentUserClaims(context: string) {
+  const auth = getFirebaseAuth();
+  if (!auth) {
+    console.warn("[Firebase Auth] Auth is not configured.", { context, ...getFirebaseDebugInfo() });
+    return null;
+  }
+  await waitForAuthReady(auth);
+  const user = auth.currentUser;
+  if (!user) {
+    console.warn("[Firebase Auth] No current user.", { context, ...getFirebaseDebugInfo() });
+    return null;
+  }
+  try {
+    const tokenResult = await withClientTimeout(getIdTokenResult(user, true), 4000, "getIdTokenResult");
+    const branchIds = Array.isArray(tokenResult.claims.branchIds) ? tokenResult.claims.branchIds : [];
+    console.info("[Firebase Auth] Current user token claims.", {
+      context,
+      uidSuffix: user.uid.slice(-6),
+      email: user.email || "",
+      isAnonymous: user.isAnonymous,
+      role: tokenResult.claims.role || "",
+      status: tokenResult.claims.status || "",
+      branchId: tokenResult.claims.branchId || "",
+      branchIds
+    });
+    return tokenResult.claims;
+  } catch (error) {
+    console.warn("[Firebase Auth] Failed to read token claims.", { context, error });
+    return null;
+  }
 }
 
 export async function ensureFirebaseAuthSession(): Promise<User | null> {

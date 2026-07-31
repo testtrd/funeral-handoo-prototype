@@ -5,7 +5,8 @@ import {
   ensureFirebaseAuthSession,
   getFirebaseDb,
   getFirebaseDebugInfo,
-  isFirebaseConfigured
+  isFirebaseConfigured,
+  logFirebaseCurrentUserClaims
 } from "@/lib/firebaseClient";
 import type { HandoffRecord } from "@/lib/handoffStorage";
 
@@ -251,6 +252,7 @@ export async function subscribeCloudHandoffRecords(
   try {
     const user = await ensureFirebaseAuthSession();
     if (!user) return null;
+    await logFirebaseCurrentUserClaims("handoffRecords:onSnapshot");
   } catch (error) {
     const message = error instanceof Error ? error.message : "Firebase Authenticationのメールログイン状態を確認できません。";
     console.error("[Firestore sync] onSnapshot skipped because auth failed.", {

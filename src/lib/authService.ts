@@ -3,6 +3,7 @@ import {
   getFirebaseCurrentUserIdToken,
   getFirebaseDb,
   isFirebaseConfigured,
+  logFirebaseCurrentUserClaims,
   sendFirebasePasswordReset,
   signInWithEmailPassword,
   signOutFirebase
@@ -67,6 +68,20 @@ function normalizedBranchIds(branchId?: unknown, branchIds?: unknown) {
   }
   const id = String(branchId || "").trim();
   return id ? [id] : [];
+}
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: number | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = window.setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+      })
+    ]);
+  } finally {
+    if (timer) window.clearTimeout(timer);
+  }
 }
 
 function firebaseLoginErrorMessage(error: unknown) {
@@ -252,8 +267,12 @@ export async function refreshCurrentUserProfile(): Promise<AuthSession | null> {
   const db = getFirebaseDb();
   if (!current || !db || !isFirebaseConfigured()) return current;
   try {
+    await withTimeout(syncCurrentUserClaimsAfterLogin(), 5000, "custom claims sync").catch((error) => {
+      console.warn("[Auth] Custom claims sync during profile refresh failed. Continuing with local session.", error);
+    });
+    await logFirebaseCurrentUserClaims("refreshCurrentUserProfile:start");
     const userRef = doc(db, "users", current.userId);
-    const snapshot = await getDoc(userRef);
+    const snapshot = await withTimeout(getDoc(userRef), 4000, "users profile read");
     if (!snapshot.exists()) return current;
     const profile = snapshot.data() as {
       name?: string;
@@ -279,6 +298,7 @@ export async function refreshCurrentUserProfile(): Promise<AuthSession | null> {
       mustChangePassword: profile.mustChangePassword === true
     };
     window.localStorage.setItem(authSessionKey, JSON.stringify(nextSession));
+    await logFirebaseCurrentUserClaims("refreshCurrentUserProfile:done");
     return nextSession;
   } catch (error) {
     console.warn("[Auth] Failed to refresh current user profile.", error);
