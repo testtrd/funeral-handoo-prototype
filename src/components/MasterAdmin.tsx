@@ -167,6 +167,10 @@ export default function MasterAdmin({ section = "overview", operationsMode = fal
     return master.branches.filter((branch) => branch.enabled);
   }, [currentUser?.role, manageableBranchIds, master.branches]);
   const ruleVendors = useMemo(() => vendorsForBranch(master, ruleScope === "global" ? "" : ruleBranchId), [master, ruleBranchId, ruleScope]);
+  const selectedRuleVendor = useMemo(
+    () => master.vendors.find((vendor) => vendor.id === ruleVendorId) || ruleVendors.find((vendor) => vendor.id === ruleVendorId),
+    [master.vendors, ruleVendorId, ruleVendors]
+  );
 
   useEffect(() => {
     if (!ruleVendors.length) {
@@ -397,7 +401,7 @@ export default function MasterAdmin({ section = "overview", operationsMode = fal
           <article className="master-panel">
             <h2>拠点を追加・編集</h2>
             <div className="master-form">
-              <TextField label="拠点名" value={branchForm.name} onChange={(name) => setBranchForm({ ...branchForm, name })} placeholder="例：本社" />
+              <TextField label="拠点名" value={branchForm.name} onChange={(name) => setBranchForm({ ...branchForm, name })} placeholder="例：本社営業所" />
               <BoolField label="有効" checked={branchForm.enabled} onChange={(enabled) => setBranchForm({ ...branchForm, enabled })} />
               <button className="primary" onClick={submitBranch}><Save size={18} /> 保存</button>
               <button onClick={() => setBranchForm(emptyBranch())}><Plus size={18} /> 新規入力</button>
@@ -561,16 +565,20 @@ export default function MasterAdmin({ section = "overview", operationsMode = fal
             </label>
             <label className="master-field">
               <span>対象業者</span>
-              <select
-                value={ruleVendorId}
-                disabled={!ruleVendors.length}
-                onChange={(event) => {
-                  setRuleVendorId(event.target.value);
-                  setRuleForm(null);
-                }}
-              >
-                {ruleVendors.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}
-              </select>
+              {ruleScope === "global" ? (
+                <div className="readonly-box">{selectedRuleVendor?.name || "業者未選択"}</div>
+              ) : (
+                <select
+                  value={ruleVendorId}
+                  disabled={!ruleVendors.length}
+                  onChange={(event) => {
+                    setRuleVendorId(event.target.value);
+                    setRuleForm(null);
+                  }}
+                >
+                  {ruleVendors.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}
+                </select>
+              )}
             </label>
             {!ruleVendors.length ? <p className="small">この拠点に紐づく業者がありません。先に「業者」画面で対象拠点を設定してください。</p> : null}
             {ruleScope === "branch" ? <p className="small">このルールは選択中の拠点だけに適用されます。全社共通より優先して使用されます。</p> : <p className="small">このルールは全拠点で使用されます。役職者以上は全社共通ルールを編集できません。</p>}

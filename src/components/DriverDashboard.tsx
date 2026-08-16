@@ -21,6 +21,7 @@ import {
   type HandoffRecord,
   type HandoffRecordStatus
 } from "@/lib/handoffStorage";
+import { getBranches } from "@/lib/masterDataService";
 
 const driverOperableStatuses = ["入力中", "現場入力完了"];
 
@@ -35,6 +36,10 @@ function destinationText(record: HandoffRecord) {
 
 function updatedByName(record: HandoffRecord) {
   return record.updatedBy?.name || record.createdBy?.name || "-";
+}
+
+function branchDisplayName(record: HandoffRecord, branches: ReturnType<typeof getBranches>) {
+  return branches.find((branch) => branch.id === record.branchId)?.name || record.branchName || "-";
 }
 
 function renderEditLock(record: HandoffRecord) {
@@ -92,6 +97,7 @@ export default function DriverDashboard() {
   const [records, setRecords] = useState<HandoffRecord[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
+  const branches = getBranches();
 
   function loadRecords() {
     const current = getCurrentUser();
@@ -211,7 +217,7 @@ export default function DriverDashboard() {
                   </td>
                   <td>{renderEditLock(record)}</td>
                   <td>{formatDateTime(record.createdAt)}</td>
-                  <td>{record.branchName}</td>
+                  <td>{branchDisplayName(record, branches)}</td>
                   <td>{record.vendorName}</td>
                   <td>{record.deceasedName || "-"}</td>
                   <td>{record.mournerName || "-"}</td>
@@ -256,7 +262,7 @@ export default function DriverDashboard() {
               <div><dt>ステータス</dt><dd>{statusDisplay(selected.status)}</dd></div>
               <div><dt>次にやる事</dt><dd>{nextActionForRecord(selected)}</dd></div>
               <div><dt>進捗率</dt><dd>{progressPercent(selected)}%</dd></div>
-              <div><dt>拠点</dt><dd>{selected.branchName}</dd></div>
+              <div><dt>拠点</dt><dd>{branchDisplayName(selected, branches)}</dd></div>
               <div><dt>業者</dt><dd>{selected.vendorName}</dd></div>
               <div><dt>故人氏名</dt><dd>{selected.deceasedName || "-"}</dd></div>
               <div><dt>喪主・代表者</dt><dd>{selected.mournerName || "-"}</dd></div>

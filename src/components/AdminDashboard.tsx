@@ -69,6 +69,10 @@ function updatedByName(record: HandoffRecord) {
   return record.updatedBy?.name || record.createdBy?.name || "-";
 }
 
+function branchDisplayName(record: HandoffRecord, branches: ReturnType<typeof getBranches>) {
+  return branches.find((branch) => branch.id === record.branchId)?.name || record.branchName || "-";
+}
+
 function renderEditLock(record: HandoffRecord) {
   const lock = editLockDisplay(record);
   return (
@@ -737,7 +741,7 @@ export default function AdminDashboard() {
         </header>
 
         <section className="admin-summary no-print" aria-label="記録の状態">
-          <div><span>拠点</span><strong>{selected.branchName}</strong></div>
+          <div><span>拠点</span><strong>{branchDisplayName(selected, branches)}</strong></div>
           <div><span>業者</span><strong>{selected.vendorName}</strong></div>
           <div><span>故人氏名</span><strong>{selected.deceasedName || "-"}</strong></div>
           <div><span>喪主・代表者</span><strong>{selected.mournerName || "-"}</strong></div>
@@ -1067,7 +1071,7 @@ export default function AdminDashboard() {
                   {record.syncError ? <span className="sync-error-detail">{record.syncError}</span> : null}
                 </td>
                 <td data-label="編集中">{renderEditLock(record)}</td>
-                <td data-label="受付日時">{formatDateTime(record.createdAt)}</td><td data-label="拠点">{record.branchName}</td><td data-label="業者">{record.vendorName}</td><td data-label="故人氏名">{record.deceasedName || "-"}</td><td data-label="喪主・代表者">{record.mournerName || "-"}</td><td data-label="対応ドライバー">{record.assignedDriver?.name || record.createdBy?.name || "-"}</td>
+                <td data-label="受付日時">{formatDateTime(record.createdAt)}</td><td data-label="拠点">{branchDisplayName(record, branches)}</td><td data-label="業者">{record.vendorName}</td><td data-label="故人氏名">{record.deceasedName || "-"}</td><td data-label="喪主・代表者">{record.mournerName || "-"}</td><td data-label="対応ドライバー">{record.assignedDriver?.name || record.createdBy?.name || "-"}</td>
                 <td data-label="火葬予約">{record.cremationReservationStatus || "-"}</td><td data-label="PDF">{record.pdf.generated ? "作成済み" : "未作成"}</td><td data-label="最終更新">{formatDateTime(record.updatedAt)}</td><td data-label="最終更新者">{updatedByName(record)}</td>
                 <td data-label="操作">
                   <div className="table-actions compact-actions">

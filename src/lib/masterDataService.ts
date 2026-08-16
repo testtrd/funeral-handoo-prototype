@@ -270,8 +270,13 @@ function normalizeMasterData(data: Partial<MasterData>): MasterData {
   const base = buildDefaultMasterData();
   const vendorRules = data.vendorRules?.length ? data.vendorRules : base.vendorRules;
   const normalizeYasuragiOption = (option: string) => option === "①全て同意する" ? "①全て同意する(一般葬)" : option;
+  const normalizeBranchName = (branch: ManagedBranch): ManagedBranch => (
+    branch.id === "head_office" && branch.name === "本社"
+      ? { ...branch, name: "本社営業所" }
+      : branch
+  );
   return {
-    branches: data.branches?.length ? data.branches : base.branches,
+    branches: (data.branches?.length ? data.branches : base.branches).map(normalizeBranchName),
     vendors: data.vendors?.length ? data.vendors : base.vendors,
     vendorRules: vendorRules.map((rule) => ({
       ...rule,

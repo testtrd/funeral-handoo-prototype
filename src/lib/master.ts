@@ -47,7 +47,7 @@ export const excludedVendorHandoffNoteOptions = [
 export const branches = [
   {
     id: "head_office",
-    name: "本社",
+    name: "本社営業所",
     vendorIds: [
       "ja_aichi_toyota_service",
       "ja_aichi_chuo",
