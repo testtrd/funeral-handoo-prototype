@@ -79,8 +79,20 @@ export default function LoginForm() {
           </label>
           {error ? <p className="error">{error}</p> : null}
           {message ? <p className="send-status success">{message}</p> : null}
-          <button className="primary" type="submit" disabled={loading}>
-            {loading ? "ログイン中..." : "ログイン"}
+          <button
+            className="primary login-submit-button"
+            type="submit"
+            disabled={loading}
+            style={{
+              backgroundColor: loading ? "#7aa2f7" : "#2563eb",
+              borderColor: loading ? "#7aa2f7" : "#1d4ed8",
+              color: "#ffffff",
+              display: "inline-flex",
+              visibility: "visible",
+              opacity: loading ? 0.86 : 1
+            }}
+          >
+            {loading ? "ログイン中..." : "ログインする"}
           </button>
         </form>
         <button className="link-button" type="button" onClick={resetPassword} disabled={resetSending}>

@@ -156,6 +156,63 @@ textarea {
   font-weight: 700;
 }
 
+.login-form button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.login-form button.primary:not(:disabled):hover {
+  border-color: var(--accent-strong);
+  background: var(--accent-strong);
+  color: #fff;
+}
+
+.login-form button.primary:disabled {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+  opacity: 0.68;
+}
+
+.login-form .login-submit-button,
+button.login-submit-button {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 48px;
+  border: 1.5px solid #1d4ed8 !important;
+  background: #2563eb !important;
+  color: #fff !important;
+  opacity: 1;
+  visibility: visible;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.22);
+}
+
+.login-form .login-submit-button:hover:not(:disabled),
+button.login-submit-button:hover:not(:disabled) {
+  border-color: #1e40af !important;
+  background: #1d4ed8 !important;
+  color: #fff !important;
+}
+
+.login-form .login-submit-button:active:not(:disabled),
+button.login-submit-button:active:not(:disabled) {
+  border-color: #1e3a8a !important;
+  background: #1e40af !important;
+  color: #fff !important;
+  transform: translateY(1px);
+}
+
+.login-form .login-submit-button:disabled,
+button.login-submit-button:disabled {
+  border-color: #7aa2f7 !important;
+  background: #7aa2f7 !important;
+  color: #fff !important;
+  opacity: 0.86;
+}
+
 .login-hint {
   display: grid;
   gap: 4px;

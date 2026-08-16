@@ -101,7 +101,7 @@ export function AuthStatus() {
 
   return (
     <div className="auth-status">
-      <span>{user.name}</span>
+      <span>{user.name}さん</span>
       <span>{userRoleLabel(user.role)}</span>
       <button type="button" onClick={() => void logoutAndGoLogin()}>
         ログアウト

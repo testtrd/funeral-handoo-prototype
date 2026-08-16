@@ -86,6 +86,7 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): P
 
 function firebaseLoginErrorMessage(error: unknown) {
   const code = typeof error === "object" && error && "code" in error ? String((error as { code?: string }).code || "") : "";
+  const message = error instanceof Error ? error.message : "";
   if (code === "auth/user-disabled") return "\u3053\u306e\u30a2\u30ab\u30a6\u30f3\u30c8\u306f\u5229\u7528\u3067\u304d\u307e\u305b\u3093\u3002";
   if (
     code === "auth/invalid-credential" ||
@@ -96,6 +97,7 @@ function firebaseLoginErrorMessage(error: unknown) {
     return "\u30e1\u30fc\u30eb\u30a2\u30c9\u30ec\u30b9\u307e\u305f\u306f\u30d1\u30b9\u30ef\u30fc\u30c9\u304c\u9055\u3044\u307e\u3059\u3002";
   }
   console.error("[Auth] Firebase login failed.", error);
+  if (message && !message.startsWith("Firebase:")) return message;
   return "\u901a\u4fe1\u30a8\u30e9\u30fc\u304c\u767a\u751f\u3057\u307e\u3057\u305f\u3002\u6642\u9593\u3092\u304a\u3044\u3066\u518d\u5ea6\u304a\u8a66\u3057\u304f\u3060\u3055\u3044\u3002";
 }
 
@@ -162,7 +164,29 @@ async function syncCurrentUserClaimsAfterLogin() {
   });
   const result = await response.json().catch(() => ({})) as { ok?: boolean; message?: string };
   if (!response.ok || !result.ok) {
-    throw new Error(result.message || "ログイン権限の同期に失敗しました。");
+    const message = "\u30ed\u30b0\u30a4\u30f3\u6a29\u9650\u306e\u540c\u671f\u306b\u5931\u6557\u3057\u307e\u3057\u305f\u3002";
+    throw new Error(result.message ? `${message}${result.message}` : message);
+  }
+  const auth = getFirebaseAuth();
+  await auth?.currentUser?.getIdToken(true).catch((error) => {
+    console.warn("[Auth] Failed to refresh ID token after claim sync.", error);
+  });
+}
+
+async function syncLoginClaims() {
+  const token = await getFirebaseCurrentUserIdToken();
+  if (!token) return;
+  const response = await fetch("/api/auth/sync-claims", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`
+    }
+  });
+  const result = await response.json().catch(() => ({})) as { ok?: boolean; message?: string };
+  if (!response.ok || !result.ok) {
+    const message = "\u30ed\u30b0\u30a4\u30f3\u6a29\u9650\u306e\u540c\u671f\u306b\u5931\u6557\u3057\u307e\u3057\u305f\u3002";
+    throw new Error(result.message ? `${message}${result.message}` : message);
   }
   const auth = getFirebaseAuth();
   await auth?.currentUser?.getIdToken(true).catch((error) => {
@@ -197,6 +221,8 @@ export async function login(userId: string, password: string): Promise<{ session
   const email = normalizeEmail(userId);
   try {
     const credential = await signInWithEmailPassword(email, password);
+    await syncLoginClaims();
+
     const profile = await readOrBootstrapUserProfile(
       credential.user.uid,
       email,
@@ -207,8 +233,6 @@ export async function login(userId: string, password: string): Promise<{ session
       await signOutFirebase().catch(() => undefined);
       return { session: null, error: "\u3053\u306e\u30a2\u30ab\u30a6\u30f3\u30c8\u306f\u5229\u7528\u3067\u304d\u307e\u305b\u3093\u3002" };
     }
-
-    await syncCurrentUserClaimsAfterLogin();
 
     const branchIds = normalizedBranchIds(profile.branchId, profile.branchIds);
     const session: AuthSession = {
@@ -267,7 +291,7 @@ export async function refreshCurrentUserProfile(): Promise<AuthSession | null> {
   const db = getFirebaseDb();
   if (!current || !db || !isFirebaseConfigured()) return current;
   try {
-    await withTimeout(syncCurrentUserClaimsAfterLogin(), 5000, "custom claims sync").catch((error) => {
+    await withTimeout(syncLoginClaims(), 5000, "custom claims sync").catch((error) => {
       console.warn("[Auth] Custom claims sync during profile refresh failed. Continuing with local session.", error);
     });
     await logFirebaseCurrentUserClaims("refreshCurrentUserProfile:start");
@@ -317,10 +341,11 @@ export async function markPasswordChangeCompleted() {
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) {
+    const fallbackMessage = "\u30d1\u30b9\u30ef\u30fc\u30c9\u5909\u66f4\u5f8c\u306e\u4fdd\u5b58\u306b\u5931\u6557\u3057\u307e\u3057\u305f\u3002";
     throw new Error(
       typeof result === "object" && result && "message" in result
-        ? String((result as { message?: string }).message || "パスワード変更後の保存に失敗しました。")
-        : "パスワード変更後の保存に失敗しました。"
+        ? String((result as { message?: string }).message || fallbackMessage)
+        : fallbackMessage
     );
   }
   const current = getCurrentUser();
