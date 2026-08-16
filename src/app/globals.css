@@ -4,6 +4,7 @@
   --ink: #1d2528;
   --muted: #69757b;
   --line: #d7e2f1;
+  --line-strong: #9db7d9;
   --panel: #ffffff;
   --accent: #2563eb;
   --accent-strong: #1d4ed8;
@@ -33,13 +34,14 @@ textarea {
 
 button {
   min-height: 48px;
-  border: 1px solid var(--line);
+  border: 1.5px solid var(--line-strong);
   border-radius: 8px;
   background: #fff;
   color: var(--ink);
   padding: 10px 16px;
   cursor: pointer;
   font-weight: 700;
+  box-shadow: 0 1px 2px rgba(29, 78, 216, 0.08);
 }
 
 button.primary {
@@ -62,6 +64,12 @@ button.ghost {
   background: transparent;
 }
 
+button:not(.primary):not(.danger-button):not(:disabled):hover,
+.button-link:hover {
+  border-color: var(--accent);
+  background: #f8fbff;
+}
+
 button:disabled {
   cursor: not-allowed;
   opacity: 0.48;
@@ -72,13 +80,14 @@ button:disabled {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--line);
+  border: 1.5px solid var(--line-strong);
   border-radius: 8px;
   background: #fff;
   color: var(--ink);
   padding: 10px 16px;
   text-decoration: none;
   font-weight: 700;
+  box-shadow: 0 1px 2px rgba(29, 78, 216, 0.08);
 }
 
 input,
@@ -264,9 +273,10 @@ textarea {
 
 .admin-table-wrap {
   overflow-x: auto;
-  border: 1px solid var(--line);
+  border: 1.5px solid var(--line-strong);
   border-radius: 8px;
   background: #fff;
+  box-shadow: 0 10px 26px rgba(37, 99, 235, 0.08);
 }
 
 .user-admin-grid {
@@ -412,6 +422,7 @@ textarea {
   min-width: 1160px;
   border-collapse: collapse;
   font-size: 14px;
+  border: 1px solid var(--line-strong);
 }
 
 .admin-table.compact {
@@ -421,10 +432,16 @@ textarea {
 .admin-table th,
 .admin-table td {
   padding: 12px 10px;
-  border-bottom: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line-strong);
   text-align: left;
   vertical-align: middle;
   white-space: nowrap;
+}
+
+.admin-table th:last-child,
+.admin-table td:last-child {
+  border-right: 0;
 }
 
 .admin-table.selection-mode th:first-child,
@@ -434,14 +451,19 @@ textarea {
 }
 
 .admin-table th {
-  background: #eff6ff;
+  background: #dbeafe;
   color: #1e3a8a;
   font-weight: 700;
+  border-bottom: 1.5px solid var(--line-strong);
+}
+
+.admin-table tbody tr:nth-child(even):not(.empty-state) {
+  background: #f8fbff;
 }
 
 .admin-table tbody tr:not(.empty-state):hover,
 .admin-table tbody tr:focus {
-  background: #f2f7ff;
+  background: #eef5ff;
   outline: none;
   cursor: pointer;
 }
@@ -463,6 +485,8 @@ textarea {
   justify-content: center;
   gap: 5px;
   min-height: 34px;
+  border-color: #8aaad4;
+  background: #fff;
   padding: 6px 9px;
   font-size: 13px;
 }
@@ -3075,10 +3099,11 @@ textarea {
   .admin-table:not(.compact) tr {
     display: grid;
     gap: 0;
-    border: 1px solid var(--line);
+    border: 1.5px solid var(--line-strong);
     border-radius: 8px;
     background: #fff;
     padding: 10px;
+    box-shadow: 0 6px 18px rgba(37, 99, 235, 0.08);
   }
 
   .admin-table:not(.compact) th,
@@ -3088,7 +3113,7 @@ textarea {
     gap: 10px;
     min-width: 0;
     padding: 8px 0;
-    border-bottom: 1px solid #eef1ef;
+    border-bottom: 1px solid var(--line);
     white-space: normal;
     overflow-wrap: anywhere;
   }
