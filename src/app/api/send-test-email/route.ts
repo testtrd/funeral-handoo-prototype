@@ -31,7 +31,7 @@ export async function POST(request: Request) {
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      from: "業務引継書アプリ <handoff@omunae.net>",
+      from: "業務引継書アプリ <handoff@omukae.net>",
       to,
       subject: "【テスト】業務引継書",
       text: "業務引継書アプリからのテスト送信です。"
