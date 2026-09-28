@@ -179,7 +179,6 @@ export default function AdminDashboard() {
   const [printJobs, setPrintJobs] = useState<Array<{ record: HandoffRecord; type: "vendor" | "internal" }>>([]);
   const [pdfJob, setPdfJob] = useState<{ record: HandoffRecord; type: "relative" | "vendor" | "internal" } | null>(null);
   const [bulkMode, setBulkMode] = useState(false);
-  const [familyCopyTestMethod, setFamilyCopyTestMethod] = useState<"email" | "sms">("email");
   const [sendingFamilyCopyTest, setSendingFamilyCopyTest] = useState(false);
   const [familyCopyTestStatus, setFamilyCopyTestStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [handoffNotesDraft, setHandoffNotesDraft] = useState<HandoffData["handoffNotes"]>({
@@ -235,7 +234,6 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     if (!selected) return;
-    setFamilyCopyTestMethod(selected.data.familyCopyDelivery.method === "sms" ? "sms" : "email");
     setFamilyCopyTestStatus(null);
     setHandoffNotesDraft({
       selectedItems: [...selected.data.handoffNotes.selectedItems],
@@ -392,7 +390,6 @@ export default function AdminDashboard() {
   }
 
   function saveFamilyCopyTestResult(record: HandoffRecord, updates: {
-    method: "email" | "sms";
     testSentAt: string;
     testSendStatus: "success" | "error" | "pending";
     testSendError: string;
@@ -401,7 +398,7 @@ export default function AdminDashboard() {
       ...record.data,
       familyCopyDelivery: {
         ...record.data.familyCopyDelivery,
-        method: updates.method,
+        method: "email" as const,
         testSentAt: updates.testSentAt,
         testSendStatus: updates.testSendStatus,
         testSendError: updates.testSendError
@@ -416,23 +413,10 @@ export default function AdminDashboard() {
     setFamilyCopyTestStatus(null);
     const now = new Date().toISOString();
 
-    if (familyCopyTestMethod === "sms") {
-      const message = "SMS送信は今後対応予定です。";
-      saveFamilyCopyTestResult(record, {
-        method: "sms",
-        testSentAt: now,
-        testSendStatus: "pending",
-        testSendError: message
-      });
-      setFamilyCopyTestStatus({ type: "error", message });
-      return;
-    }
-
     const to = record.data.familyCopyDelivery.email.trim();
     if (!to) {
       const message = "親族控えの送信先メールアドレスが未入力です。";
       saveFamilyCopyTestResult(record, {
-        method: "email",
         testSentAt: now,
         testSendStatus: "error",
         testSendError: message
@@ -453,7 +437,6 @@ export default function AdminDashboard() {
         throw new Error(result.message || "親族控え送付テストに失敗しました。");
       }
       saveFamilyCopyTestResult(record, {
-        method: "email",
         testSentAt: now,
         testSendStatus: "success",
         testSendError: ""
@@ -465,7 +448,6 @@ export default function AdminDashboard() {
     } catch (error) {
       const message = error instanceof Error ? error.message : "親族控え送付テストに失敗しました。";
       saveFamilyCopyTestResult(record, {
-        method: "email",
         testSentAt: now,
         testSendStatus: "error",
         testSendError: message
@@ -873,17 +855,8 @@ export default function AdminDashboard() {
               {selected.data.familyCopyDelivery.testSendError ? <div><dt>前回エラー</dt><dd>{selected.data.familyCopyDelivery.testSendError}</dd></div> : null}
             </dl>
             <div className="admin-send-test-panel">
-              <label>
-                <span>送信方法</span>
-                <select value={familyCopyTestMethod} onChange={(event) => setFamilyCopyTestMethod(event.target.value as "email" | "sms")}>
-                  <option value="email">メール</option>
-                  <option value="sms">SMS</option>
-                </select>
-              </label>
               <p className="small">
-                {familyCopyTestMethod === "email"
-                  ? `送信先: ${selected.data.familyCopyDelivery.email || "未入力"}`
-                  : `送信先: ${selected.data.familyCopyDelivery.smsPhoneNumber || "未入力"}（SMS送信は今後対応予定です）`}
+                送信先メールアドレス: {selected.data.familyCopyDelivery.email || "未入力"}
               </p>
               <button onClick={() => sendFamilyCopyTest(selected)} disabled={sendingFamilyCopyTest}>
                 <Mail size={18} /> {sendingFamilyCopyTest ? "送信中..." : "親族控え送信テスト"}

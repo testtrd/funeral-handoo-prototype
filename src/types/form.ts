@@ -50,9 +50,9 @@ export type RelativeConfirmation = {
 };
 
 export type FamilyCopyDelivery = {
-  method: "sms" | "email" | "none";
-  smsPhoneNumber: string;
+  method: "email";
   email: string;
+  emailConfirmation: string;
   confirmed: boolean;
   testSentAt?: string;
   testSendStatus?: "success" | "error" | "pending" | "";
@@ -65,9 +65,6 @@ export type FamilyCopyDelivery = {
   emailSentAt?: string;
   emailSendStatus?: "success" | "error" | "pending" | "";
   emailSendError?: string;
-  smsSentAt?: string;
-  smsSendStatus?: "success" | "error" | "pending" | "";
-  smsSendError?: string;
 };
 
 export type PrivacyConsent = {

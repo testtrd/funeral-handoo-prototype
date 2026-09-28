@@ -127,9 +127,9 @@ export const defaultData: HandoffData = {
     signatureDataUrl: ""
   },
   familyCopyDelivery: {
-    method: "none",
-    smsPhoneNumber: "",
+    method: "email",
     email: "",
+    emailConfirmation: "",
     confirmed: false,
     testSentAt: "",
     testSendStatus: "",
@@ -141,10 +141,7 @@ export const defaultData: HandoffData = {
     mockSent: false,
     emailSentAt: "",
     emailSendStatus: "",
-    emailSendError: "",
-    smsSentAt: "",
-    smsSendStatus: "",
-    smsSendError: ""
+    emailSendError: ""
   },
   privacyConsent: {
     agreed: null,

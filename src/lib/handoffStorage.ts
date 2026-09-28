@@ -9,6 +9,7 @@ import {
   subscribeCloudHandoffRecords
 } from "@/lib/firebaseHandoffRepository";
 import { getCurrentUser, type AuthUser } from "@/lib/authService";
+import { normalizeFamilyCopyDelivery } from "@/lib/familyCopyDeliveryService";
 import { getBranches, getVendorMap, getVendorRule, type VendorRule } from "@/lib/masterDataService";
 import { safeJsonParse } from "@/lib/safeJson";
 import type { HandoffData } from "@/types/form";
@@ -465,7 +466,7 @@ function withDataDefaults(data: HandoffData): HandoffData {
     vendorCopy: { ...base.vendorCopy, ...data.vendorCopy },
     internalCopy: { ...base.internalCopy, ...data.internalCopy },
     relativeConfirmation: { ...base.relativeConfirmation, ...data.relativeConfirmation },
-    familyCopyDelivery: { ...base.familyCopyDelivery, ...data.familyCopyDelivery },
+    familyCopyDelivery: normalizeFamilyCopyDelivery(data.familyCopyDelivery),
     privacyConsent: { ...base.privacyConsent, ...data.privacyConsent },
     postWork: { ...base.postWork, ...data.postWork, savedBy: { ...base.postWork.savedBy, ...data.postWork?.savedBy } },
     consent: { ...base.consent, ...data.consent }

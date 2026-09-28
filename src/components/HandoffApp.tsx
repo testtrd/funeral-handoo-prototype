@@ -15,7 +15,12 @@ import {
 } from "@/lib/dates";
 import { defaultData } from "@/lib/defaultData";
 import { downloadElementAsPdf, sanitizeFileName } from "@/lib/downloadService";
-import { familyCopyDeliveryText, isFamilyCopyDeliveryReady } from "@/lib/familyCopyDeliveryService";
+import {
+  familyCopyDeliveryText,
+  familyCopyDeliveryValidationMessage,
+  isFamilyCopyDeliveryReady,
+  normalizeFamilyCopyDelivery
+} from "@/lib/familyCopyDeliveryService";
 import {
   defaultVendorHandoffNoteOptions,
   externalInquiryQuestion,
@@ -44,8 +49,6 @@ import type { DeathDateValue, EraDateValue, HandoffData, MonthDayTimeValue } fro
 const storageKey = "funeral-handoff-draft-v3";
 const editingStepKey = "funeral-handoff-edit-step";
 const editingRecordIdKey = "funeral-handoff-edit-record-id";
-const familyCopySmsMessage = "入力内容の控えを送信しました。内容をご確認ください。";
-
 function cloudSaveStatusText(status: HandoffSyncStatus | "") {
   if (status === "synced") return "クラウド同期済み";
   if (status === "offline_pending") return "クラウド同期待ち";
@@ -55,11 +58,10 @@ function cloudSaveStatusText(status: HandoffSyncStatus | "") {
 }
 
 function familyCopyNotificationStatusText(delivery: HandoffData["familyCopyDelivery"]) {
-  const methodLabel = delivery.method === "sms" ? "SMS" : "メール";
-  if (delivery.sendStatus === "success") return `${methodLabel}送信済み`;
-  if (delivery.sendStatus === "pending") return `${methodLabel}送信待ち`;
-  if (delivery.sendStatus === "error") return `${methodLabel}送信失敗`;
-  return `${methodLabel}送信未実施`;
+  if (delivery.sendStatus === "success") return "メール送信済み";
+  if (delivery.sendStatus === "pending") return "メール送信待ち";
+  if (delivery.sendStatus === "error") return "メール送信失敗";
+  return "メール送信未実施";
 }
 
 const steps = [
@@ -384,7 +386,7 @@ const helpFaqByStep: Record<number, { title: string; faqs: HelpFaq[] }> = {
     title: "親族控え確認のヘルプ",
     faqs: [
       { question: "この画面では何を確認しますか？", answer: "入力内容と、控えの送付先を確認してください。問題なければ確認チェックを入れてください。" },
-      { question: "SMSとメールはどちらを選べばいいですか？", answer: "控えを受け取りたい方法を選んでください。SMSは携帯番号、メールはメールアドレスを入力します。" },
+      { question: "メールアドレスはなぜ2回入力しますか？", answer: "入力間違いを防ぐためです。同じメールアドレスを2回入力してください。" },
       { question: "署名はもう一度必要ですか？", answer: "個人情報同意画面で取得した署名を、内容確認の署名として使用します。" }
     ]
   }
@@ -856,7 +858,7 @@ function migrateDraft(raw: unknown): HandoffData {
     vendorCopy: { ...base.vendorCopy, ...incoming.vendorCopy },
     internalCopy: { ...base.internalCopy, ...incoming.internalCopy },
     relativeConfirmation: { ...base.relativeConfirmation, ...incoming.relativeConfirmation },
-    familyCopyDelivery: { ...base.familyCopyDelivery, ...incoming.familyCopyDelivery },
+    familyCopyDelivery: normalizeFamilyCopyDelivery(incoming.familyCopyDelivery),
     privacyConsent: { ...base.privacyConsent, ...incoming.privacyConsent },
     postWork: { ...base.postWork, ...incoming.postWork, savedBy: { ...base.postWork.savedBy, ...incoming.postWork?.savedBy } },
     consent: { ...base.consent, ...incoming.consent }
@@ -1002,17 +1004,6 @@ export default function HandoffApp() {
   }, [data.vendorId]);
 
   useEffect(() => {
-    if (data.familyCopyDelivery.method !== "sms" || data.familyCopyDelivery.smsPhoneNumber || !data.chiefMourner.mobilePhone) return;
-    setData((current) => ({
-      ...current,
-      familyCopyDelivery: {
-        ...current.familyCopyDelivery,
-        smsPhoneNumber: current.chiefMourner.mobilePhone
-      }
-    }));
-  }, [data.familyCopyDelivery.method, data.familyCopyDelivery.smsPhoneNumber, data.chiefMourner.mobilePhone]);
-
-  useEffect(() => {
     setData((current) => {
       const shouldClearPriest = current.religion.introductionWanted === "希望する" || current.religion.hasPriest === "無";
       const shouldClearRelationship = current.religion.hasPriest === "無";
@@ -1060,6 +1051,7 @@ export default function HandoffApp() {
   const availableVendors = branch ? branch.vendorIds.map((id) => vendorMap[id]).filter(Boolean) : [];
   const errors = useMemo(() => buildValidation(data), [data]);
   const familyCopyDeliveryReady = isFamilyCopyDeliveryReady(data.familyCopyDelivery);
+  const familyCopyDeliveryError = familyCopyDeliveryValidationMessage(data.familyCopyDelivery);
 
   useEffect(() => {
     if (!loaded || !branchList.length) return;
@@ -1106,32 +1098,13 @@ export default function HandoffApp() {
         mockSent: false,
         emailSentAt: "",
         emailSendStatus: "",
-        emailSendError: "",
-        smsSentAt: "",
-        smsSendStatus: "",
-        smsSendError: ""
+        emailSendError: ""
       },
       relativeCopy: { ...current.relativeCopy, generated: false, generatedAt: "", sent: false, sentAt: "", fileName: "" }
     };
   }
 
-  function updateFamilyCopyDeliveryMethod(methodLabel: string) {
-    const method = methodLabel === "SMSで受け取る" ? "sms" : methodLabel === "メールで受け取る" ? "email" : "none";
-    setPersistDraft(true);
-    setData((current) => {
-      const reset = resetRelativeConfirmationState(current);
-      return {
-        ...reset,
-        familyCopyDelivery: {
-          ...reset.familyCopyDelivery,
-          method,
-          smsPhoneNumber: method === "sms" && !reset.familyCopyDelivery.smsPhoneNumber ? reset.chiefMourner.mobilePhone : reset.familyCopyDelivery.smsPhoneNumber
-        }
-      };
-    });
-  }
-
-  function updateFamilyCopyDeliveryField(field: "smsPhoneNumber" | "email", value: string) {
+  function updateFamilyCopyEmailField(field: "email" | "emailConfirmation", value: string) {
     setPersistDraft(true);
     setData((current) => {
       const reset = resetRelativeConfirmationState(current);
@@ -1159,9 +1132,6 @@ function persistFamilyCopyData(nextData: HandoffData, idOverride?: string | null
   }
 
   function defaultFamilyCopyMessage(sourceData: HandoffData) {
-    if (sourceData.familyCopyDelivery.method === "sms") {
-      return "入力内容の控えを送信しました。内容をご確認ください。";
-    }
     return buildFamilyCopyEmailText(sourceData);
   }
 
@@ -1198,32 +1168,7 @@ function persistFamilyCopyData(nextData: HandoffData, idOverride?: string | null
     };
   }
 
-  function updateSendConfirmationMethod(methodLabel: string) {
-    const method: HandoffData["familyCopyDelivery"]["method"] = methodLabel === "SMSで受け取る" ? "sms" : methodLabel === "メールで受け取る" ? "email" : "none";
-    setPersistDraft(true);
-    setData((current) => {
-      const next: HandoffData = {
-        ...current,
-        familyCopyDelivery: {
-          ...current.familyCopyDelivery,
-          method,
-          smsPhoneNumber: method === "sms" && !current.familyCopyDelivery.smsPhoneNumber ? current.chiefMourner.mobilePhone : current.familyCopyDelivery.smsPhoneNumber,
-          sendStatus: "",
-          sendError: "",
-          messageTemplate: ""
-        }
-      };
-      return {
-        ...next,
-        familyCopyDelivery: {
-          ...next.familyCopyDelivery,
-          messageTemplate: defaultFamilyCopyMessage(next)
-        }
-      };
-    });
-  }
-
-  function updateSendConfirmationDestination(field: "smsPhoneNumber" | "email", value: string) {
+  function updateSendConfirmationDestination(field: "email" | "emailConfirmation", value: string) {
     setPersistDraft(true);
     setData((current) => ({
       ...current,
@@ -1250,7 +1195,6 @@ function persistFamilyCopyData(nextData: HandoffData, idOverride?: string | null
   }
 
   function buildFamilyCopyPendingData(sourceData: HandoffData, now: string): HandoffData {
-    const isSms = sourceData.familyCopyDelivery.method === "sms";
     return {
       ...sourceData,
       relativeConfirmation: {
@@ -1266,10 +1210,8 @@ function persistFamilyCopyData(nextData: HandoffData, idOverride?: string | null
         sentAt: "",
         sendStatus: "pending",
         sendError: getNetworkStatus() === "offline" ? "通信復旧後に送信します。" : "",
-        emailSendStatus: isSms ? sourceData.familyCopyDelivery.emailSendStatus : "pending",
-        emailSendError: isSms ? sourceData.familyCopyDelivery.emailSendError : "",
-        smsSendStatus: isSms ? "pending" : sourceData.familyCopyDelivery.smsSendStatus,
-        smsSendError: isSms ? "" : sourceData.familyCopyDelivery.smsSendError
+        emailSendStatus: "pending",
+        emailSendError: ""
       },
       relativeCopy: {
         ...sourceData.relativeCopy,
@@ -1280,23 +1222,17 @@ function persistFamilyCopyData(nextData: HandoffData, idOverride?: string | null
   }
 
   async function sendFamilyCopyNotification(sourceData: HandoffData) {
-    const isSms = sourceData.familyCopyDelivery.method === "sms";
-    const response = await fetch(isSms ? "/api/send-family-copy-sms" : "/api/send-family-copy", {
+    const response = await fetch("/api/send-family-copy", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(isSms
-        ? {
-            to: sourceData.familyCopyDelivery.smsPhoneNumber,
-            message: familyCopyMessageTemplate(sourceData) || familyCopySmsMessage
-          }
-        : {
-            to: sourceData.familyCopyDelivery.email,
-            text: familyCopyMessageTemplate(sourceData)
-          })
+      body: JSON.stringify({
+        to: sourceData.familyCopyDelivery.email,
+        text: familyCopyMessageTemplate(sourceData)
+      })
     });
     const result = await response.json().catch(() => ({})) as { ok?: boolean; message?: string };
     if (!response.ok || result.ok === false) {
-      throw new Error(result.message || `${isSms ? "SMS" : "親族控えメール"}の送信に失敗しました。`);
+      throw new Error(result.message || "親族控えメールの送信に失敗しました。");
     }
     const sentAt = new Date().toISOString();
     return {
@@ -1307,12 +1243,9 @@ function persistFamilyCopyData(nextData: HandoffData, idOverride?: string | null
         sentAt,
         sendStatus: "success",
         sendError: "",
-        emailSentAt: isSms ? sourceData.familyCopyDelivery.emailSentAt : sentAt,
-        emailSendStatus: isSms ? sourceData.familyCopyDelivery.emailSendStatus : "success",
-        emailSendError: isSms ? sourceData.familyCopyDelivery.emailSendError : "",
-        smsSentAt: isSms ? sentAt : sourceData.familyCopyDelivery.smsSentAt,
-        smsSendStatus: isSms ? "success" : sourceData.familyCopyDelivery.smsSendStatus,
-        smsSendError: isSms ? "" : sourceData.familyCopyDelivery.smsSendError
+        emailSentAt: sentAt,
+        emailSendStatus: "success",
+        emailSendError: ""
       },
       relativeCopy: {
         ...sourceData.relativeCopy,
@@ -1323,18 +1256,15 @@ function persistFamilyCopyData(nextData: HandoffData, idOverride?: string | null
   }
 
   function buildFamilyCopyErrorData(sourceData: HandoffData, error: unknown) {
-    const isSms = sourceData.familyCopyDelivery.method === "sms";
-    const message = error instanceof Error ? error.message : `${isSms ? "SMS" : "親族控えメール"}の送信に失敗しました。`;
+    const message = error instanceof Error ? error.message : "親族控えメールの送信に失敗しました。";
     return {
       ...sourceData,
       familyCopyDelivery: {
         ...sourceData.familyCopyDelivery,
         sendStatus: "error",
-        sendError: `${isSms ? "SMS" : "メール"}送信エラー: ${message}`,
-        emailSendStatus: isSms ? sourceData.familyCopyDelivery.emailSendStatus : "error",
-        emailSendError: isSms ? sourceData.familyCopyDelivery.emailSendError : message,
-        smsSendStatus: isSms ? "error" : sourceData.familyCopyDelivery.smsSendStatus,
-        smsSendError: isSms ? message : sourceData.familyCopyDelivery.smsSendError
+        sendError: `メール送信エラー: ${message}`,
+        emailSendStatus: "error",
+        emailSendError: message
       }
     } satisfies HandoffData;
   }
@@ -1362,7 +1292,7 @@ function persistFamilyCopyData(nextData: HandoffData, idOverride?: string | null
 
   async function confirmAndSendFamilyCopy() {
     if (!isFamilyCopyDeliveryReady(data.familyCopyDelivery)) {
-      alert("控えの送付方法と送付先を確認してから選択してください。");
+      alert(familyCopyDeliveryValidationMessage(data.familyCopyDelivery));
       return;
     }
 
@@ -1376,7 +1306,7 @@ function persistFamilyCopyData(nextData: HandoffData, idOverride?: string | null
 
   async function sendConfirmedFamilyCopy() {
     if (!isFamilyCopyDeliveryReady(data.familyCopyDelivery)) {
-      alert("控えの送付方法と送付先を確認してください。");
+      alert(familyCopyDeliveryValidationMessage(data.familyCopyDelivery));
       return;
     }
     setSendingFamilyCopy(true);
@@ -1412,7 +1342,7 @@ function persistFamilyCopyData(nextData: HandoffData, idOverride?: string | null
 
   async function retryFamilyCopyNotification(sourceData = data) {
     if (!isFamilyCopyDeliveryReady(sourceData.familyCopyDelivery)) {
-      alert("控えの送付方法と送付先を確認してください。");
+      alert(familyCopyDeliveryValidationMessage(sourceData.familyCopyDelivery));
       return;
     }
     setSendingFamilyCopy(true);
@@ -2166,35 +2096,32 @@ function persistFamilyCopyData(nextData: HandoffData, idOverride?: string | null
                   下の親族控え内容と送付先をご確認ください。問題なければ、次の画面で送信本文を確認します。
                 </p>
                 <div className="delivery-confirm-box">
-                  <h4>控え（内容）の送付先確認</h4>
-                  <CompactChoice
-                    label="控えの送付方法"
-                    value={data.familyCopyDelivery.method === "sms" ? "SMSで受け取る" : data.familyCopyDelivery.method === "email" ? "メールで受け取る" : ""}
-                    options={["SMSで受け取る", "メールで受け取る"]}
-                    onChange={updateFamilyCopyDeliveryMethod}
-                    required
-                  />
-                  {data.familyCopyDelivery.method === "sms" ? (
-                    <Field label="送付先携帯番号" required hint="喪主・代表者情報で入力した携帯電話番号を初期表示しています。必要に応じて変更できます。">
-                      <input
-                        value={data.familyCopyDelivery.smsPhoneNumber}
-                        placeholder="例：090-0000-0000"
-                        onChange={(event) => updateFamilyCopyDeliveryField("smsPhoneNumber", event.target.value)}
-                      />
-                    </Field>
-                  ) : null}
-                  {data.familyCopyDelivery.method === "email" ? (
-                    <Field label="送付先メールアドレス" required>
-                      <input
-                        type="email"
-                        value={data.familyCopyDelivery.email}
-                        placeholder="例：sample@example.com"
-                        onChange={(event) => updateFamilyCopyDeliveryField("email", event.target.value)}
-                      />
-                    </Field>
-                  ) : null}
+                  <h4>親族控えの送信</h4>
+                  <p className="small">確認内容の控えをメールでお送りします。</p>
+                  <Field label="メールアドレス" required>
+                    <input
+                      type="email"
+                      inputMode="email"
+                      autoComplete="email"
+                      spellCheck={false}
+                      value={data.familyCopyDelivery.email}
+                      placeholder="例：sample@example.com"
+                      onChange={(event) => updateFamilyCopyEmailField("email", event.target.value)}
+                    />
+                  </Field>
+                  <Field label="メールアドレス（確認）" required hint="入力間違い防止のため、同じメールアドレスをもう一度入力してください。">
+                    <input
+                      type="email"
+                      inputMode="email"
+                      autoComplete="off"
+                      spellCheck={false}
+                      value={data.familyCopyDelivery.emailConfirmation}
+                      placeholder="もう一度入力してください"
+                      onChange={(event) => updateFamilyCopyEmailField("emailConfirmation", event.target.value)}
+                    />
+                  </Field>
                   {!familyCopyDeliveryReady ? (
-                    <p className="small" style={{ color: "#b42318" }}>控えの送付方法と送付先を入力してください。</p>
+                    <p className="small" style={{ color: "#b42318" }}>{familyCopyDeliveryError}</p>
                   ) : null}
                   {data.familyCopyDelivery.sendStatus === "error" && data.familyCopyDelivery.sendError ? (
                     <p className="small" style={{ color: "#b42318" }}>{data.familyCopyDelivery.sendError}</p>
@@ -2214,44 +2141,40 @@ function persistFamilyCopyData(nextData: HandoffData, idOverride?: string | null
               <div className="schedule-card no-print">
                 <h3>親族控え送信前確認</h3>
                 <p className="notice">
-                  送信先と本文を確認してください。メールはResendを使って送信します。SMSは送信サービス設定後に利用できます。
+                  送信先メールアドレスと本文を確認してください。
                 </p>
                 <div className="delivery-confirm-box">
-                  <CompactChoice
-                    label="送信方法"
-                    value={data.familyCopyDelivery.method === "sms" ? "SMSで受け取る" : data.familyCopyDelivery.method === "email" ? "メールで受け取る" : ""}
-                    options={["SMSで受け取る", "メールで受け取る"]}
-                    onChange={updateSendConfirmationMethod}
-                    required
-                  />
-                  {data.familyCopyDelivery.method === "sms" ? (
-                    <Field label="送信先携帯番号" required>
-                      <input
-                        value={data.familyCopyDelivery.smsPhoneNumber}
-                        placeholder="例：090-0000-0000"
-                        onChange={(event) => updateSendConfirmationDestination("smsPhoneNumber", event.target.value)}
-                      />
-                    </Field>
-                  ) : null}
-                  {data.familyCopyDelivery.method === "email" ? (
-                    <Field label="送信先メールアドレス" required>
-                      <input
-                        type="email"
-                        value={data.familyCopyDelivery.email}
-                        placeholder="例：sample@example.com"
-                        onChange={(event) => updateSendConfirmationDestination("email", event.target.value)}
-                      />
-                    </Field>
-                  ) : null}
+                  <Field label="送信先メールアドレス" required>
+                    <input
+                      type="email"
+                      inputMode="email"
+                      autoComplete="email"
+                      spellCheck={false}
+                      value={data.familyCopyDelivery.email}
+                      placeholder="例：sample@example.com"
+                      onChange={(event) => updateSendConfirmationDestination("email", event.target.value)}
+                    />
+                  </Field>
+                  <Field label="メールアドレス（確認）" required>
+                    <input
+                      type="email"
+                      inputMode="email"
+                      autoComplete="off"
+                      spellCheck={false}
+                      value={data.familyCopyDelivery.emailConfirmation}
+                      placeholder="もう一度入力してください"
+                      onChange={(event) => updateSendConfirmationDestination("emailConfirmation", event.target.value)}
+                    />
+                  </Field>
                   <Field label="送信本文テンプレート" required hint="必要に応じて編集できます。">
                     <textarea
-                      rows={data.familyCopyDelivery.method === "sms" ? 4 : 12}
+                      rows={12}
                       value={familyCopyMessageTemplate(data)}
                       onChange={(event) => updateFamilyCopyMessageTemplate(event.target.value)}
                     />
                   </Field>
                   {!familyCopyDeliveryReady ? (
-                    <p className="small" style={{ color: "#b42318" }}>送信方法と送信先を入力してください。</p>
+                    <p className="small" style={{ color: "#b42318" }}>{familyCopyDeliveryError}</p>
                   ) : null}
                   {data.familyCopyDelivery.sendStatus === "pending" ? (
                     <p className="send-status">送信待ちです。通信復旧後、再送信してください。</p>
@@ -2277,9 +2200,7 @@ function persistFamilyCopyData(nextData: HandoffData, idOverride?: string | null
                 <h3>入力が完了しました</h3>
                 {data.familyCopyDelivery.sendStatus === "success" ? (
                   <p className="notice">
-                    {data.familyCopyDelivery.method === "sms"
-                      ? "入力内容の控えに関する案内を、登録された電話番号へ送信済みとして記録しました。"
-                      : "入力内容の控えを、登録されたメールアドレスへ送信済みとして記録しました。"}
+                    入力いただいたメールアドレスへ控えを送信しました。
                   </p>
                 ) : null}
                 <p>親族様への内容確認が完了しました。</p>
