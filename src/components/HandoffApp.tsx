@@ -2531,8 +2531,77 @@ function relativeCopyRows(data: HandoffData): Array<[string, string]> {
 }
 
 function buildFamilyCopyEmailText(data: HandoffData) {
-  const rows = relativeCopyRows(data).map(([label, value]) => `${label}: ${displayValue(value)}`);
-  return ["親族控え", "", "内容確認", ...rows].join("\n");
+  const vendor = getVendorMap()[data.vendorId];
+  const meaningful = (value: string) => {
+    const normalized = value.trim();
+    return normalized && !["-", "未定", "未入力"].includes(normalized) ? normalized : "";
+  };
+  const section = (title: string, values: string[]) => {
+    const lines = values.map(meaningful).filter(Boolean);
+    return lines.length ? [`【${title}】`, ...lines, ""] : [];
+  };
+  const scheduleState = (status: string, hope = "") => {
+    const states = [status === "仮" ? "仮" : status === "未" ? "未定" : "", hope === "希望" ? "希望" : ""].filter(Boolean);
+    return states.length ? `（${states.join("・")}）` : "";
+  };
+  const scheduleLine = (label: string, value: MonthDayTimeValue, status = "", hope = "") => {
+    const dateTime = formatMonthDayTime(value);
+    return dateTime ? `${label}：${dateTime}${scheduleState(status, hope)}` : "";
+  };
+  const pickupDate = data.transport.pickupDate.month && data.transport.pickupDate.day
+    ? `${Number(data.transport.pickupDate.month)}月${Number(data.transport.pickupDate.day)}日`
+    : "";
+  const pickupDateTime = [pickupDate, data.transport.pickupTime].filter(Boolean).join(" ");
+  const destination = [data.transport.destinationType, data.transport.destinationPlace].map(meaningful).filter(Boolean).join(" / ");
+  const wakeLine = scheduleLine("通夜", data.schedule.wakeDateTime, data.schedule.wakeStatus, data.schedule.wakeHope);
+  const funeralLine = scheduleLine("葬儀", data.schedule.funeralDateTime, data.schedule.funeralStatus, data.schedule.funeralHope);
+  const departureLine = scheduleLine("出棺", data.schedule.departureDateTime, data.schedule.crematoriumStatus);
+  const cremationLine = scheduleLine("火葬", data.schedule.cremationDateTime, data.schedule.crematoriumStatus);
+  const contactSchedule = data.contactAndNotes.phoneContactEnabled === "無"
+    ? ""
+    : formatMonthDayFreeTime(data.contactAndNotes.phoneContact);
+  const contactRecipient = (() => {
+    if (data.contactAndNotes.phoneContactEnabled === "無") return "";
+    if (data.handoffNotes.morningContactToRepresentative) return "代表者へご連絡します";
+
+    if (["自宅", "携帯"].includes(data.chiefMourner.preferredContact)) {
+      if (data.chiefMourner.role === "喪主") return "喪主様へご連絡します";
+      if (data.chiefMourner.role === "代表者") return "代表者へご連絡します";
+      return "喪主・代表者様へご連絡します";
+    }
+
+    if (data.chiefMourner.preferredContact === "上記以外") {
+      const contactName = data.chiefMourner.otherContact
+        .replace(/(?:\+?\d[\d\s()-]{7,}\d)/g, "")
+        .replace(/^[\s/／|｜,，、]+|[\s/／|｜,，、]+$/g, "")
+        .replace(/\s{2,}/g, " ")
+        .trim();
+      return contactName ? `${contactName} 様へご連絡します` : "";
+    }
+
+    return "";
+  })();
+
+  return [
+    "親族控え",
+    "",
+    "ご入力・ご確認いただいた内容の控えです。",
+    "",
+    ...section("故人", [nameWithHonorific(data.deceased.name)]),
+    ...section("葬儀社", [vendor?.name || ""]),
+    ...section("お迎え", [pickupDateTime, data.transport.pickupName]),
+    ...section("搬送先", [destination]),
+    ...section("今後の予定", [
+      wakeLine,
+      data.schedule.wakePlace,
+      funeralLine,
+      data.schedule.funeralPlace,
+      departureLine,
+      cremationLine,
+      data.schedule.crematoriumName
+    ]),
+    ...section("葬儀社からの連絡予定", [contactSchedule, contactRecipient])
+  ].join("\n").trim();
 }
 
 export function RelativeCopyReport({ data }: { data: HandoffData }) {
