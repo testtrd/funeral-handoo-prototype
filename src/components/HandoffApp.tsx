@@ -878,6 +878,9 @@ function migrateDraft(raw: unknown): HandoffData {
   if (!merged.contactAndNotes.phoneContactEnabled) {
     merged.contactAndNotes.phoneContactEnabled = merged.contactAndNotes.phoneContact.day || merged.contactAndNotes.phoneContact.time ? "有" : "";
   }
+  if (!merged.transport.destinationPlace && incoming.transport?.enshrinementPlace) {
+    merged.transport.destinationPlace = incoming.transport.enshrinementPlace;
+  }
   if (!merged.handoffNotes.freeText && legacyContact?.vendorHandoffMemo) {
     merged.handoffNotes.freeText = legacyContact.vendorHandoffMemo;
   }
@@ -923,6 +926,7 @@ export default function HandoffApp() {
   const [recordId, setRecordId] = useState<string | null>(null);
   const [readOnlyLockMessage, setReadOnlyLockMessage] = useState("");
   const [sendingFamilyCopy, setSendingFamilyCopy] = useState(false);
+  const [familyCopyMessageEdited, setFamilyCopyMessageEdited] = useState(false);
   const [familyCopySyncStatus, setFamilyCopySyncStatus] = useState<HandoffSyncStatus | "">("");
   const relativePdfRef = useRef<HTMLDivElement>(null);
   const vendorPdfRef = useRef<HTMLDivElement>(null);
@@ -1132,11 +1136,12 @@ function persistFamilyCopyData(nextData: HandoffData, idOverride?: string | null
   }
 
   function defaultFamilyCopyMessage(sourceData: HandoffData) {
-    return buildFamilyCopyEmailText(sourceData);
+    const storedVendorName = recordId ? getHandoffRecordById(recordId)?.vendorName : "";
+    return buildFamilyCopyEmailText(sourceData, storedVendorName || "");
   }
 
   function familyCopyMessageTemplate(sourceData: HandoffData) {
-    return sourceData.familyCopyDelivery.messageTemplate?.trim()
+    return familyCopyMessageEdited && sourceData.familyCopyDelivery.messageTemplate?.trim()
       ? sourceData.familyCopyDelivery.messageTemplate
       : defaultFamilyCopyMessage(sourceData);
   }
@@ -1183,6 +1188,7 @@ function persistFamilyCopyData(nextData: HandoffData, idOverride?: string | null
 
   function updateFamilyCopyMessageTemplate(value: string) {
     setPersistDraft(true);
+    setFamilyCopyMessageEdited(true);
     setData((current) => ({
       ...current,
       familyCopyDelivery: {
@@ -1648,7 +1654,8 @@ function persistFamilyCopyData(nextData: HandoffData, idOverride?: string | null
     const record = acquireHandoffEditLock(recordId, { takeover: true }) || getHandoffRecordById(recordId);
     if (!record) return;
     setReadOnlyLockMessage("");
-    setData(record.data);
+    setFamilyCopyMessageEdited(false);
+    setData(migrateDraft(record.data));
     setPersistDraft(true);
   }
 
@@ -2530,13 +2537,20 @@ function relativeCopyRows(data: HandoffData): Array<[string, string]> {
   ];
 }
 
-function buildFamilyCopyEmailText(data: HandoffData) {
+function buildFamilyCopyEmailText(data: HandoffData, storedVendorName = "") {
   const vendor = getVendorMap()[data.vendorId];
-  const meaningful = (value: string) => {
-    const normalized = value.trim();
+  const legacyData = data as HandoffData & {
+    transport?: HandoffData["transport"] & { enshrinementPlace?: string };
+    contactAndNotes?: HandoffData["contactAndNotes"] & {
+      contactTarget?: string;
+      phoneContactTime?: string;
+    };
+  };
+  const meaningful = (value: unknown) => {
+    const normalized = typeof value === "string" ? value.trim() : "";
     return normalized && !["-", "未定", "未入力"].includes(normalized) ? normalized : "";
   };
-  const section = (title: string, values: string[]) => {
+  const section = (title: string, values: unknown[]) => {
     const lines = values.map(meaningful).filter(Boolean);
     return lines.length ? [`【${title}】`, ...lines, ""] : [];
   };
@@ -2544,34 +2558,51 @@ function buildFamilyCopyEmailText(data: HandoffData) {
     const states = [status === "仮" ? "仮" : status === "未" ? "未定" : "", hope === "希望" ? "希望" : ""].filter(Boolean);
     return states.length ? `（${states.join("・")}）` : "";
   };
-  const scheduleLine = (label: string, value: MonthDayTimeValue, status = "", hope = "") => {
-    const dateTime = formatMonthDayTime(value);
+  const scheduleLine = (label: string, value: MonthDayTimeValue | null | undefined, status = "", hope = "") => {
+    const dateTime = formatMonthDayTime(value || undefined);
     return dateTime ? `${label}：${dateTime}${scheduleState(status, hope)}` : "";
   };
-  const pickupDate = data.transport.pickupDate.month && data.transport.pickupDate.day
+  const pickupDate = data.transport.pickupDate?.month && data.transport.pickupDate?.day
     ? `${Number(data.transport.pickupDate.month)}月${Number(data.transport.pickupDate.day)}日`
     : "";
-  const pickupDateTime = [pickupDate, data.transport.pickupTime].filter(Boolean).join(" ");
-  const destination = [data.transport.destinationType, data.transport.destinationPlace].map(meaningful).filter(Boolean).join(" / ");
+  const pickupDateTime = [pickupDate, meaningful(data.transport.pickupTime)].filter(Boolean).join(" ");
+  const destinationPlace = meaningful(data.transport.destinationPlace) || meaningful(legacyData.transport?.enshrinementPlace);
+  const destination = [data.transport.destinationType, destinationPlace].map(meaningful).filter(Boolean).join(" / ");
   const wakeLine = scheduleLine("通夜", data.schedule.wakeDateTime, data.schedule.wakeStatus, data.schedule.wakeHope);
   const funeralLine = scheduleLine("葬儀", data.schedule.funeralDateTime, data.schedule.funeralStatus, data.schedule.funeralHope);
   const departureLine = scheduleLine("出棺", data.schedule.departureDateTime, data.schedule.crematoriumStatus);
   const cremationLine = scheduleLine("火葬", data.schedule.cremationDateTime, data.schedule.crematoriumStatus);
+  const legacyPhoneContactTime = meaningful(legacyData.contactAndNotes?.phoneContactTime);
+  const normalizedPhoneContact = {
+    month: meaningful(data.contactAndNotes.phoneContact?.month),
+    day: meaningful(data.contactAndNotes.phoneContact?.day),
+    time: meaningful(data.contactAndNotes.phoneContact?.time)
+  };
   const contactSchedule = data.contactAndNotes.phoneContactEnabled === "無"
     ? ""
-    : formatMonthDayFreeTime(data.contactAndNotes.phoneContact);
+    : formatMonthDayFreeTime(normalizedPhoneContact) || legacyPhoneContactTime;
   const contactRecipient = (() => {
     if (data.contactAndNotes.phoneContactEnabled === "無") return "";
     if (data.handoffNotes.morningContactToRepresentative) return "代表者へご連絡します";
 
-    if (["自宅", "携帯"].includes(data.chiefMourner.preferredContact)) {
+    const preferredContact = (data.chiefMourner.preferredContact as string) === "その他"
+      ? "上記以外"
+      : data.chiefMourner.preferredContact;
+    if (["自宅", "携帯"].includes(preferredContact)) {
       if (data.chiefMourner.role === "喪主") return "喪主様へご連絡します";
       if (data.chiefMourner.role === "代表者") return "代表者へご連絡します";
       return "喪主・代表者様へご連絡します";
     }
 
-    if (data.chiefMourner.preferredContact === "上記以外") {
-      const contactName = data.chiefMourner.otherContact
+    const legacyContactTarget = meaningful(legacyData.contactAndNotes?.contactTarget);
+    if (preferredContact === "上記以外" || (!preferredContact && legacyContactTarget)) {
+      const rawContact = meaningful(data.chiefMourner.otherContact) || legacyContactTarget;
+      if (rawContact.includes("喪主")) return "喪主様へご連絡します";
+      if (rawContact.includes("代表者")) return "代表者へご連絡します";
+      if (["自宅", "携帯"].includes(rawContact)) {
+        return data.chiefMourner.role === "喪主" ? "喪主様へご連絡します" : "代表者へご連絡します";
+      }
+      const contactName = rawContact
         .replace(/(?:\+?\d[\d\s()-]{7,}\d)/g, "")
         .replace(/^[\s/／|｜,，、]+|[\s/／|｜,，、]+$/g, "")
         .replace(/\s{2,}/g, " ")
@@ -2588,7 +2619,7 @@ function buildFamilyCopyEmailText(data: HandoffData) {
     "ご入力・ご確認いただいた内容の控えです。",
     "",
     ...section("故人", [nameWithHonorific(data.deceased.name)]),
-    ...section("葬儀社", [vendor?.name || ""]),
+    ...section("葬儀社", [vendor?.name || storedVendorName]),
     ...section("お迎え", [pickupDateTime, data.transport.pickupName]),
     ...section("搬送先", [destination]),
     ...section("今後の予定", [
