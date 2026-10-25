@@ -13,7 +13,8 @@
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "firebase:login": "npx firebase-tools login",
-    "firebase:deploy:rules": "npx firebase-tools deploy --only firestore:rules --project funeral-handoff-prototype"
+    "firebase:deploy:rules": "npx firebase-tools deploy --only firestore:rules --project funeral-handoff-prototype",
+    "test:firebase-runtime": "node --no-experimental-require-module --test tests/firebase-runtime.test.mjs"
   },
   "dependencies": {
     "dompurify": "3.4.17",

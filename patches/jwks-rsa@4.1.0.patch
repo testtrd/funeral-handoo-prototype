@@ -1,0 +1,38 @@
+diff --git a/src/integrations/passport.js b/src/integrations/passport.js
+index 79d75da66c130acb0d1329dfca15bd10c4ea8655..4eac11f047fd5134b96b45100e105c29ad3d1ad7 100644
+--- a/src/integrations/passport.js
++++ b/src/integrations/passport.js
+@@ -1,4 +1,3 @@
+-const jose = require('jose');
+ const { ArgumentError } = require('../errors');
+ const { JwksClient } = require('../JwksClient');
+ const supportedAlg = require('./config');
+@@ -27,9 +26,10 @@ module.exports.passportJwtSecret = function (options) {
+   const client = new JwksClient(options);
+   const onError = options.handleSigningKeyError || handleSigningKeyError;
+ 
+-  return function secretProvider(req, rawJwtToken, cb) {
++  return async function secretProvider(req, rawJwtToken, cb) {
+     let decoded;
+     try {
++      const jose = await import('jose');
+       decoded = {
+         payload: jose.decodeJwt(rawJwtToken),
+         header: jose.decodeProtectedHeader(rawJwtToken)
+diff --git a/src/utils.js b/src/utils.js
+index ef3ffb56cda03d2f02d655c55ad14ad983223273..6c61d3d439dde46a0c908fb0a0beff23d666a97e 100644
+--- a/src/utils.js
++++ b/src/utils.js
+@@ -1,4 +1,3 @@
+-const jose = require('jose');
+ const JwksError = require('./errors/JwksError');
+ 
+ function resolveAlg(jwk) {
+@@ -33,6 +32,7 @@ function resolveAlg(jwk) {
+ }
+ 
+ async function retrieveSigningKeys(jwks) {
++  const jose = await import('jose');
+   const results = [];
+ 
+   jwks = jwks

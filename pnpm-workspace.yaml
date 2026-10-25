@@ -11,3 +11,6 @@ overrides:
   fast-xml-parser: 5.10.1
   nanoid: 3.3.18
   source-map-js: 1.2.2
+
+patchedDependencies:
+  jwks-rsa@4.1.0: patches/jwks-rsa@4.1.0.patch
