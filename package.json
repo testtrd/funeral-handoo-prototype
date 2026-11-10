@@ -18,12 +18,12 @@
   },
   "dependencies": {
     "dompurify": "3.4.17",
-    "firebase": "^13.1.0",
+    "firebase": "^13.2.0",
     "firebase-admin": "^14.5.0",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
-    "lucide-react": "1.21.0",
-    "next": "16.4.3",
+    "lucide-react": "1.69.0",
+    "next": "16.4.5",
     "react": "19.3.1",
     "react-dom": "19.3.1"
   },
